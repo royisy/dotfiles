@@ -28,7 +28,7 @@ endif
 nnoremap <c-s> :w<cr>
 nnoremap <esc><esc> :nohlsearch<cr>
 
-# share clipboard with windows in wsl
+" share clipboard with windows in wsl
 if system('uname -a | grep microsoft') != ''
     let g:clipboard = {
         \   'name': 'myClipboard',
