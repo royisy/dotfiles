@@ -27,3 +27,19 @@ endif
 
 nnoremap <c-s> :w<cr>
 nnoremap <esc><esc> :nohlsearch<cr>
+
+# share clipboard with windows in wsl
+if system('uname -a | grep microsoft') != ''
+    let g:clipboard = {
+        \   'name': 'myClipboard',
+        \   'copy': {
+        \      '+': 'win32yank.exe -i',
+        \      '*': 'win32yank.exe -i',
+        \    },
+        \   'paste': {
+        \      '+': 'win32yank.exe -o',
+        \      '*': 'win32yank.exe -o',
+        \   },
+        \   'cache_enabled': 1,
+        \ }
+endif
