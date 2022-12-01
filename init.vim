@@ -33,7 +33,6 @@ nnoremap <esc><esc> :nohlsearch<cr>
 
 " insert blank line
 nnoremap <Enter> o<ESC>
-nnoremap <S-Enter> O<ESC>
 
 " share clipboard with windows in wsl
 if system('uname -a | grep microsoft') != ''
