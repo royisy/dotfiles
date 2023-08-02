@@ -17,13 +17,13 @@ set softtabstop=4            " see multiple spaces as tabstops so <BS> does the 
 set autoindent               " indent a new line the same amount as the line just typed
 set shiftwidth=4             " width for autoindents
 
-set spell                    " enable spell checker
-hi SpellBad cterm=underline ctermbg=NONE
-hi SpellCap ctermbg=NONE
-
 if exists('g:vscode')
     " VSCode extension
 else
+    set spell                                " enable spell checker
+    hi SpellBad cterm=underline ctermbg=NONE
+    hi SpellCap ctermbg=NONE
+
     call plug#begin()
     Plug 'farmergreg/vim-lastplace'
     call plug#end()
