@@ -24,6 +24,8 @@ else
     hi SpellBad cterm=underline ctermbg=NONE
     hi SpellCap ctermbg=NONE
 
+    highlight Normal ctermbg=NONE guibg=NONE  "setting the backgroud color to transparent.
+
     call plug#begin()
     Plug 'farmergreg/vim-lastplace'
     call plug#end()
