@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+#
+# Bootstrap a CLI development environment for WSL2 Ubuntu 24.04.
+#
+# This script is intended to be idempotent:
+# - installed commands are skipped
+# - apt update runs at most once
+# - apt packages are installed in one batch where possible
+#
+# It installs common CLI tools, chezmoi, starship, Codex, and Claude Code.
+# It does not manage credentials, API keys, or authentication state.
+# It does not change the default shell automatically; see the final message.
+#
+# Safe to run on both personal and work machines, including systems where some
+# tools are already installed.
+
 set -euo pipefail
 
 FAILED_COMMAND=""
