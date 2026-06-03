@@ -7,7 +7,7 @@
 # - apt update runs at most once
 # - apt packages are installed in one batch where possible
 #
-# It installs common CLI tools, chezmoi, starship, Codex, and Claude Code.
+# It installs common CLI tools, chezmoi, Oh My Zsh, Codex, and Claude Code.
 # It does not manage credentials, API keys, or authentication state.
 # It does not change the default shell automatically; see the final message.
 #
@@ -170,22 +170,50 @@ verify_base_tools() {
   has_command curl || warn "curl command is still missing"
 }
 
-install_starship() {
-  if has_command starship; then
-    mark_skipped "starship"
+install_oh_my_zsh() {
+  if [[ -d "$HOME/.oh-my-zsh" ]]; then
+    mark_skipped "oh-my-zsh"
     return
   fi
 
-  local installer="$TMP_DIR/starship-install.sh"
-  download_installer "starship" "https://starship.rs/install.sh" "$installer"
+  if ! has_command git; then
+    printf '[ERROR] git is required to install Oh My Zsh.\n' >&2
+    exit 1
+  fi
 
-  # External official installer notice:
-  # Do not use "curl | sh" here. The installer is downloaded to a temporary
-  # file first so it can be inspected/debugged if installation fails.
-  need_sudo
-  log "running starship official installer with sudo"
-  "${SUDO[@]}" sh "$installer" -y -b /usr/local/bin
-  mark_installed "starship"
+  log "cloning Oh My Zsh"
+  git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git "$HOME/.oh-my-zsh"
+  mark_installed "oh-my-zsh"
+}
+
+install_oh_my_zsh_plugin() {
+  local name="$1"
+  local repo="$2"
+  local plugin_dir="$HOME/.oh-my-zsh/custom/plugins/$name"
+
+  if [[ ! -d "$HOME/.oh-my-zsh" ]]; then
+    warn "Oh My Zsh is not installed; cannot install plugin: $name"
+    return
+  fi
+
+  if [[ -d "$plugin_dir" ]]; then
+    mark_skipped "oh-my-zsh plugin: $name"
+    return
+  fi
+
+  if ! has_command git; then
+    printf '[ERROR] git is required to install Oh My Zsh plugin: %s.\n' "$name" >&2
+    exit 1
+  fi
+
+  log "cloning Oh My Zsh plugin: $name"
+  git clone --depth=1 "$repo" "$plugin_dir"
+  mark_installed "oh-my-zsh plugin: $name"
+}
+
+install_oh_my_zsh_plugins() {
+  install_oh_my_zsh_plugin "zsh-autosuggestions" "https://github.com/zsh-users/zsh-autosuggestions.git"
+  install_oh_my_zsh_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting.git"
 }
 
 install_chezmoi() {
@@ -292,7 +320,8 @@ main() {
   install_apt_packages
   ensure_fd_command
   verify_base_tools
-  install_starship
+  install_oh_my_zsh
+  install_oh_my_zsh_plugins
   install_chezmoi
   install_codex
   install_claude_code
