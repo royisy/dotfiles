@@ -9,4 +9,3 @@ if [ -f "$HOME/.zshrc.local" ]; then
 fi
 
 alias ll='ls -la'
-alias memo='nvim ~/memo.txt'

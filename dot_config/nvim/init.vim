@@ -34,6 +34,12 @@ nnoremap <esc><esc> :nohlsearch<cr>
 " insert blank line
 nnoremap <Enter> o<ESC>
 
+" restore cursor position
+autocmd BufReadPost *
+    \ if line("'\"") > 1 && line("'\"") <= line("$") |
+    \   execute "normal! g`\"" |
+    \ endif
+
 " share clipboard with windows in wsl when win32yank is available
 if system('uname -a | grep microsoft') != '' && executable('win32yank.exe')
     let g:clipboard = {
