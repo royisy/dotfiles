@@ -34,8 +34,8 @@ nnoremap <esc><esc> :nohlsearch<cr>
 " insert blank line
 nnoremap <Enter> o<ESC>
 
-" share clipboard with windows in wsl
-if system('uname -a | grep microsoft') != ''
+" share clipboard with windows in wsl when win32yank is available
+if system('uname -a | grep microsoft') != '' && executable('win32yank.exe')
     let g:clipboard = {
         \   'name': 'myClipboard',
         \   'copy': {
