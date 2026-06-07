@@ -216,6 +216,32 @@ install_oh_my_zsh_plugins() {
   install_oh_my_zsh_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting.git"
 }
 
+install_tmux_plugin() {
+  local name="$1"
+  local repo="$2"
+  local plugin_dir="$HOME/.tmux/plugins/$name"
+
+  if [[ -d "$plugin_dir" ]]; then
+    mark_skipped "tmux plugin: $name"
+    return
+  fi
+
+  if ! has_command git; then
+    printf '[ERROR] git is required to install tmux plugin: %s.\n' "$name" >&2
+    exit 1
+  fi
+
+  log "cloning tmux plugin: $name"
+  git clone --depth=1 "$repo" "$plugin_dir"
+  mark_installed "tmux plugin: $name"
+}
+
+install_tmux_plugins() {
+  install_tmux_plugin "tpm" "https://github.com/tmux-plugins/tpm.git"
+  install_tmux_plugin "tmux-resurrect" "https://github.com/tmux-plugins/tmux-resurrect.git"
+  install_tmux_plugin "tmux-continuum" "https://github.com/tmux-plugins/tmux-continuum.git"
+}
+
 install_chezmoi() {
   if has_command chezmoi; then
     mark_skipped "chezmoi"
@@ -322,6 +348,7 @@ main() {
   verify_base_tools
   install_oh_my_zsh
   install_oh_my_zsh_plugins
+  install_tmux_plugins
   install_chezmoi
   install_codex
   install_claude_code
