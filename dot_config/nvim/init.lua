@@ -2,7 +2,7 @@ vim.opt.number = true -- Show line numbers
 vim.cmd.syntax("on") -- Enable syntax highlighting
 vim.opt.clipboard = "unnamed" -- Use the system clipboard
 vim.opt.list = true -- Show invisible characters
-vim.opt.listchars = { tab = ">-", trail = "." } -- Define invisible characters
+vim.opt.listchars = { tab = ">-", trail = "·" } -- Define invisible characters
 vim.opt.mouse = "a" -- Enable mouse support
 
 vim.opt.showmatch = true -- Highlight matching brackets
