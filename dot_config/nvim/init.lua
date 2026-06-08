@@ -4,6 +4,7 @@ vim.opt.clipboard = "unnamed" -- Use the system clipboard
 vim.opt.list = true -- Show invisible characters
 vim.opt.listchars = { tab = ">-", trail = "·" } -- Define invisible characters
 vim.opt.mouse = "a" -- Enable mouse support
+vim.opt.termguicolors = true -- 24-bit truecolor (needs tmux RGB passthrough inside tmux)
 
 vim.opt.showmatch = true -- Highlight matching brackets
 vim.opt.ignorecase = true -- Ignore case when searching
