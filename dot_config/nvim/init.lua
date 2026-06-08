@@ -20,6 +20,7 @@ vim.opt.shiftwidth = 4 -- Indent by four spaces
 -- Enable spell checking outside VSCode.
 if not vim.g.vscode then
   vim.opt.spell = true
+  vim.opt.spelllang = { "en", "cjk" } -- Skip CJK characters so Japanese is not underlined
   vim.cmd("highlight SpellBad cterm=underline ctermbg=NONE")
   vim.cmd("highlight SpellCap ctermbg=NONE")
 end
