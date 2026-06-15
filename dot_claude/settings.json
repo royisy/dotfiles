@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zsh -c 'source ~/.config/zsh/win-notify.sh; win-notify \"Task complete.\" \"Claude\"' 2>/dev/null",
+            "async": true,
+            "statusMessage": "Notifying Windows"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "jq -r '.message // \"\"' | { read -r m; case \"$m\" in *\"waiting for your input\"*) exit 0 ;; esac; zsh -c 'source ~/.config/zsh/win-notify.sh; win-notify \"Input needed.\" \"Claude\"' ; [ -n \"$TMUX_PANE\" ] && printf '\\a' > \"$(tmux display-message -p -t \"$TMUX_PANE\" '#{pane_tty}')\" ; } 2>/dev/null",
+            "async": true,
+            "statusMessage": "Notifying Windows"
+          }
+        ]
+      }
+    ]
+  }
+}
