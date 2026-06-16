@@ -1,5 +1,6 @@
 vim.opt.number = true -- Show line numbers
 vim.cmd.syntax("on") -- Enable syntax highlighting
+pcall(vim.cmd.colorscheme, "habamax") -- Explicit colorscheme: portable colors across nvim versions (0.10+ default is muted)
 vim.opt.clipboard = "unnamed" -- Use the system clipboard
 vim.opt.list = true -- Show invisible characters
 vim.opt.listchars = { tab = ">-", trail = "·" } -- Define invisible characters
@@ -25,6 +26,14 @@ if not vim.g.vscode then
   vim.cmd("highlight SpellBad cterm=underline ctermbg=NONE")
   vim.cmd("highlight SpellCap ctermbg=NONE")
 end
+
+-- Use Tree-sitter highlighting for Markdown (bundled markdown parser on 0.10+).
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "markdown",
+  callback = function()
+    pcall(vim.treesitter.start)
+  end,
+})
 
 -- Common key mappings.
 vim.keymap.set("n", "<C-s>", "<cmd>write<cr>")
