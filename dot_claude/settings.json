@@ -1,8 +1,26 @@
 {
   "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$TMUX_PANE\" ] && tmux set-option -w -t \"$TMUX_PANE\" window-status-style 'bg=blue,fg=white' 2>/dev/null",
+            "async": true,
+            "statusMessage": "tmux: mark window busy"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "hooks": [
+          {
+            "type": "command",
+            "command": "[ -n \"$TMUX_PANE\" ] && tmux set-option -uw -t \"$TMUX_PANE\" window-status-style 2>/dev/null",
+            "async": true,
+            "statusMessage": "tmux: clear window busy"
+          },
           {
             "type": "command",
             "command": "zsh -c 'source ~/.config/zsh/win-notify.sh; win-notify \"Task complete.\" \"Claude\"' 2>/dev/null",
