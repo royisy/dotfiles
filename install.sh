@@ -95,11 +95,18 @@ check_environment() {
 }
 
 install_apt_packages() {
+  if [[ "${SKIP_APT:-0}" == "1" ]]; then
+    mark_skipped "apt install"
+    return
+  fi
+
   local apt_packages=()
 
   if has_command git; then mark_skipped "git"; else apt_packages+=(git); fi
   if has_command zsh; then mark_skipped "zsh"; else apt_packages+=(zsh); fi
   if has_command tmux; then mark_skipped "tmux"; else apt_packages+=(tmux); fi
+  if has_command bat || has_command batcat; then mark_skipped "bat"; else apt_packages+=(bat); fi
+  if has_command delta; then mark_skipped "git-delta"; else apt_packages+=(git-delta); fi
   if has_command rg; then mark_skipped "ripgrep"; else apt_packages+=(ripgrep); fi
   if ! has_command fd && ! has_command fdfind; then
     apt_packages+=(fd-find)
@@ -107,6 +114,7 @@ install_apt_packages() {
     mark_skipped "fd-find"
   fi
   if has_command fzf; then mark_skipped "fzf"; else apt_packages+=(fzf); fi
+  if has_command zoxide; then mark_skipped "zoxide"; else apt_packages+=(zoxide); fi
   if has_command jq; then mark_skipped "jq"; else apt_packages+=(jq); fi
   if has_command nvim; then mark_skipped "neovim"; else apt_packages+=(neovim); fi
   if has_command curl; then mark_skipped "curl"; else apt_packages+=(curl); fi
@@ -129,6 +137,31 @@ install_apt_packages() {
   "${SUDO[@]}" apt-get install -y "${apt_packages[@]}"
   printf -v installed_packages '%s, ' "${apt_packages[@]}"
   mark_installed "apt packages: ${installed_packages%, }"
+}
+
+ensure_bat_command() {
+  if has_command bat; then
+    mark_skipped "bat symlink"
+    return
+  fi
+
+  if ! has_command batcat; then
+    warn "batcat is not available; cannot create bat symlink"
+    return
+  fi
+
+  mkdir -p "$HOME/.local/bin"
+  if [[ -e "$HOME/.local/bin/bat" && ! -L "$HOME/.local/bin/bat" ]]; then
+    warn "$HOME/.local/bin/bat exists and is not a symlink; leaving it unchanged"
+    return
+  fi
+
+  ln -sfn "$(command -v batcat)" "$HOME/.local/bin/bat"
+  mark_installed "bat symlink: $HOME/.local/bin/bat"
+
+  if [[ ":$PATH:" != *":$HOME/.local/bin:"* ]]; then
+    warn "$HOME/.local/bin is not in PATH; bat may not be available until PATH is updated"
+  fi
 }
 
 ensure_fd_command() {
@@ -162,12 +195,175 @@ verify_base_tools() {
   has_command git || warn "git command is still missing"
   has_command zsh || warn "zsh command is still missing"
   has_command tmux || warn "tmux command is still missing"
+  has_command bat || has_command batcat || warn "bat/batcat command is still missing"
+  has_command delta || warn "delta command is still missing"
   has_command rg || warn "rg command is still missing"
   has_command fd || has_command fdfind || warn "fd/fdfind command is still missing"
   has_command fzf || warn "fzf command is still missing"
+  has_command zoxide || warn "zoxide command is still missing"
   has_command jq || warn "jq command is still missing"
   has_command nvim || warn "nvim command is still missing"
   has_command curl || warn "curl command is still missing"
+}
+
+github_linux_arch() {
+  case "$(uname -m)" in
+    x86_64|amd64) printf 'x86_64' ;;
+    aarch64|arm64) printf 'arm64' ;;
+    armv6l) printf 'armv6' ;;
+    *)
+      warn "unsupported architecture: $(uname -m)"
+      return 1
+      ;;
+  esac
+}
+
+github_latest_tag() {
+  local repo="$1"
+  curl -fsSL "https://api.github.com/repos/$repo/releases/latest" | jq -r '.tag_name'
+}
+
+install_release_binary() {
+  local name="$1"
+  local url="$2"
+  local archive="$3"
+  local binary_path="$4"
+
+  if ! has_command curl || ! has_command tar; then
+    printf '[ERROR] curl and tar are required to install %s.\n' "$name" >&2
+    exit 1
+  fi
+
+  download_installer "$name" "$url" "$TMP_DIR/$archive"
+  mkdir -p "$TMP_DIR/$name" "$HOME/.local/bin"
+  tar -xzf "$TMP_DIR/$archive" -C "$TMP_DIR/$name"
+  install -m 0755 "$TMP_DIR/$name/$binary_path" "$HOME/.local/bin/$name"
+  mark_installed "$name"
+}
+
+install_bat() {
+  if has_command bat; then
+    mark_skipped "bat"
+    return
+  fi
+
+  if has_command batcat; then
+    mark_skipped "bat release"
+    return
+  fi
+
+  if ! has_command jq; then
+    printf '[ERROR] jq is required to install bat from GitHub releases.\n' >&2
+    exit 1
+  fi
+
+  local tag version archive
+  tag="$(github_latest_tag sharkdp/bat)"
+  version="${tag#v}"
+  archive="bat-v${version}-x86_64-unknown-linux-gnu.tar.gz"
+  install_release_binary "bat" "https://github.com/sharkdp/bat/releases/download/${tag}/${archive}" "$archive" "bat-v${version}-x86_64-unknown-linux-gnu/bat"
+}
+
+install_delta() {
+  if has_command delta; then
+    mark_skipped "delta"
+    return
+  fi
+
+  if ! has_command jq; then
+    printf '[ERROR] jq is required to install delta from GitHub releases.\n' >&2
+    exit 1
+  fi
+
+  local tag archive
+  tag="$(github_latest_tag dandavison/delta)"
+  archive="delta-${tag}-x86_64-unknown-linux-gnu.tar.gz"
+  install_release_binary "delta" "https://github.com/dandavison/delta/releases/download/${tag}/${archive}" "$archive" "delta-${tag}-x86_64-unknown-linux-gnu/delta"
+}
+
+install_zoxide() {
+  if has_command zoxide; then
+    mark_skipped "zoxide"
+    return
+  fi
+
+  if ! has_command jq; then
+    printf '[ERROR] jq is required to install zoxide from GitHub releases.\n' >&2
+    exit 1
+  fi
+
+  local tag version archive
+  tag="$(github_latest_tag ajeetdsouza/zoxide)"
+  version="${tag#v}"
+  archive="zoxide-${version}-x86_64-unknown-linux-musl.tar.gz"
+  install_release_binary "zoxide" "https://github.com/ajeetdsouza/zoxide/releases/download/${tag}/${archive}" "$archive" "zoxide"
+}
+
+install_lazygit() {
+  if has_command lazygit; then
+    mark_skipped "lazygit"
+    return
+  fi
+
+  if ! has_command curl || ! has_command jq || ! has_command tar; then
+    printf '[ERROR] curl, jq, and tar are required to install lazygit.\n' >&2
+    exit 1
+  fi
+
+  local lazygit_arch
+  lazygit_arch="$(github_linux_arch)" || return
+
+  local tag version archive url checksums
+  tag="$(github_latest_tag jesseduffield/lazygit)"
+  if [[ -z "$tag" || "$tag" == "null" ]]; then
+    printf '[ERROR] could not determine latest lazygit release.\n' >&2
+    exit 1
+  fi
+
+  version="${tag#v}"
+  archive="lazygit_${version}_linux_${lazygit_arch}.tar.gz"
+  url="https://github.com/jesseduffield/lazygit/releases/download/${tag}/${archive}"
+  checksums="$TMP_DIR/lazygit-checksums.txt"
+
+  download_installer "lazygit" "$url" "$TMP_DIR/$archive"
+  download_installer "lazygit checksums" "https://github.com/jesseduffield/lazygit/releases/download/${tag}/checksums.txt" "$checksums"
+  grep "  $archive\$" "$checksums" | (cd "$TMP_DIR" && sha256sum -c -)
+
+  tar -xzf "$TMP_DIR/$archive" -C "$TMP_DIR" lazygit
+  mkdir -p "$HOME/.local/bin"
+  install -m 0755 "$TMP_DIR/lazygit" "$HOME/.local/bin/lazygit"
+  mark_installed "lazygit $tag"
+}
+
+install_user_local_cli_tools() {
+  install_bat
+  install_delta
+  install_zoxide
+  install_lazygit
+}
+
+install_nvim_plugin() {
+  local name="$1"
+  local repo="$2"
+  local plugin_dir="$HOME/.local/share/nvim/site/pack/plugins/start/$name"
+
+  if [[ -d "$plugin_dir" ]]; then
+    mark_skipped "nvim plugin: $name"
+    return
+  fi
+
+  if ! has_command git; then
+    printf '[ERROR] git is required to install Neovim plugin: %s.\n' "$name" >&2
+    exit 1
+  fi
+
+  log "cloning Neovim plugin: $name"
+  git clone --depth=1 "$repo" "$plugin_dir"
+  mark_installed "nvim plugin: $name"
+}
+
+install_nvim_plugins() {
+  install_nvim_plugin "fzf-lua" "https://github.com/ibhagwan/fzf-lua.git"
 }
 
 install_oh_my_zsh() {
@@ -344,8 +540,11 @@ main() {
 
   check_environment
   install_apt_packages
+  install_user_local_cli_tools
+  ensure_bat_command
   ensure_fd_command
   verify_base_tools
+  install_nvim_plugins
   install_oh_my_zsh
   install_oh_my_zsh_plugins
   install_tmux_plugins

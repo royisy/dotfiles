@@ -52,6 +52,15 @@ vim.api.nvim_create_autocmd("BufReadPost", {
   end,
 })
 
+local has_fzf_lua, fzf_lua = pcall(require, "fzf-lua")
+if has_fzf_lua then
+  fzf_lua.setup({})
+  vim.keymap.set("n", "<C-p>", fzf_lua.files)
+  vim.keymap.set("n", "<C-g>", fzf_lua.live_grep)
+  vim.keymap.set("n", "<leader>b", fzf_lua.buffers)
+  vim.keymap.set("n", "<leader>h", fzf_lua.help_tags)
+end
+
 -- Share the Windows clipboard when win32yank is available in WSL.
 if vim.fn.has("wsl") == 1 and vim.fn.executable("win32yank.exe") == 1 then
   vim.g.clipboard = {
