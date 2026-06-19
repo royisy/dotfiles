@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"$TMUX_PANE\" ] && tmux set-option -w -t \"$TMUX_PANE\" window-status-style 'bg=blue,fg=white' 2>/dev/null",
+            "command": "[ -n \"$TMUX_PANE\" ] && { tmux set-option -w -t \"$TMUX_PANE\" window-status-style 'bg=blue,fg=white'; tmux set-option -w -t \"$TMUX_PANE\" @busy 1; } 2>/dev/null",
             "async": true,
             "statusMessage": "tmux: mark window busy"
           }
@@ -17,7 +17,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"$TMUX_PANE\" ] && tmux set-option -uw -t \"$TMUX_PANE\" window-status-style 2>/dev/null",
+            "command": "[ -n \"$TMUX_PANE\" ] && { tmux set-option -uw -t \"$TMUX_PANE\" window-status-style; tmux set-option -uw -t \"$TMUX_PANE\" @busy; } 2>/dev/null",
             "async": true,
             "statusMessage": "tmux: clear window busy"
           },
