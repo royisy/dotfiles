@@ -40,6 +40,7 @@ vim.api.nvim_create_autocmd("FileType", {
 vim.keymap.set("n", "<C-s>", "<cmd>write<cr>")
 vim.keymap.set("n", "<Esc><Esc>", "<cmd>nohlsearch<cr>")
 vim.keymap.set("n", "<CR>", "o<Esc>")
+vim.keymap.set("n", "<leader>w", "<cmd>set wrap!<cr>") -- Toggle line wrapping (default on)
 
 -- Restore the last cursor position when reopening a file.
 vim.api.nvim_create_autocmd("BufReadPost", {
