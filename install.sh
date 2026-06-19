@@ -55,6 +55,19 @@ need_sudo() {
   fi
 }
 
+# Whether apt-get can run with sudo without blocking on an unanswerable prompt.
+# True when: running as root, sudo credentials are already cached/passwordless,
+# or a terminal is attached so sudo can prompt interactively. False only when
+# sudo would need a password but there is no tty to enter it (e.g. non-interactive
+# runs); callers should skip apt gracefully instead of hard-failing.
+apt_sudo_ready() {
+  (( EUID == 0 )) && return 0
+  command -v sudo >/dev/null 2>&1 || return 1
+  sudo -n true 2>/dev/null && return 0
+  [ -t 0 ] && return 0
+  return 1
+}
+
 has_command() {
   command -v "$1" >/dev/null 2>&1
 }
@@ -102,19 +115,18 @@ install_apt_packages() {
 
   local apt_packages=()
 
+  # Note: bat, delta, ripgrep, and zoxide are installed from GitHub releases into
+  # ~/.local/bin (see install_user_local_cli_tools), so they are intentionally not
+  # listed here. apt only handles tools that have no user-local installer.
   if has_command git; then mark_skipped "git"; else apt_packages+=(git); fi
   if has_command zsh; then mark_skipped "zsh"; else apt_packages+=(zsh); fi
   if has_command tmux; then mark_skipped "tmux"; else apt_packages+=(tmux); fi
-  if has_command bat || has_command batcat; then mark_skipped "bat"; else apt_packages+=(bat); fi
-  if has_command delta; then mark_skipped "git-delta"; else apt_packages+=(git-delta); fi
-  if has_command rg; then mark_skipped "ripgrep"; else apt_packages+=(ripgrep); fi
   if ! has_command fd && ! has_command fdfind; then
     apt_packages+=(fd-find)
   else
     mark_skipped "fd-find"
   fi
   if has_command fzf; then mark_skipped "fzf"; else apt_packages+=(fzf); fi
-  if has_command zoxide; then mark_skipped "zoxide"; else apt_packages+=(zoxide); fi
   if has_command jq; then mark_skipped "jq"; else apt_packages+=(jq); fi
   if has_command nvim; then mark_skipped "neovim"; else apt_packages+=(neovim); fi
   if has_command curl; then mark_skipped "curl"; else apt_packages+=(curl); fi
@@ -127,6 +139,12 @@ install_apt_packages() {
 
   if ((${#apt_packages[@]} == 0)); then
     mark_skipped "apt install"
+    return
+  fi
+
+  if ! apt_sudo_ready; then
+    warn "apt skipped: sudo unavailable non-interactively (set SKIP_APT=1 to silence). Missing: ${apt_packages[*]}"
+    mark_skipped "apt install (no sudo)"
     return
   fi
 
@@ -281,6 +299,23 @@ install_delta() {
   install_release_binary "delta" "https://github.com/dandavison/delta/releases/download/${tag}/${archive}" "$archive" "delta-${tag}-x86_64-unknown-linux-gnu/delta"
 }
 
+install_ripgrep() {
+  if has_command rg; then
+    mark_skipped "ripgrep"
+    return
+  fi
+
+  if ! has_command jq; then
+    printf '[ERROR] jq is required to install ripgrep from GitHub releases.\n' >&2
+    exit 1
+  fi
+
+  local tag archive
+  tag="$(github_latest_tag BurntSushi/ripgrep)"
+  archive="ripgrep-${tag}-x86_64-unknown-linux-musl.tar.gz"
+  install_release_binary "rg" "https://github.com/BurntSushi/ripgrep/releases/download/${tag}/${archive}" "$archive" "ripgrep-${tag}-x86_64-unknown-linux-musl/rg"
+}
+
 install_zoxide() {
   if has_command zoxide; then
     mark_skipped "zoxide"
@@ -338,6 +373,7 @@ install_lazygit() {
 install_user_local_cli_tools() {
   install_bat
   install_delta
+  install_ripgrep
   install_zoxide
   install_lazygit
 }
