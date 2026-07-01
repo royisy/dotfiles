@@ -12,6 +12,14 @@ if command -v zoxide >/dev/null 2>&1; then
     eval "$(zoxide init zsh)"
 fi
 
+# fzf key bindings: Ctrl-T (files), Alt-C (cd into dir), Ctrl-R (history)
+if [ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]; then
+    source /usr/share/doc/fzf/examples/key-bindings.zsh
+fi
+if [ -f /usr/share/doc/fzf/examples/completion.zsh ]; then
+    source /usr/share/doc/fzf/examples/completion.zsh
+fi
+
 if [ -f "$HOME/.zshrc.local" ]; then
     source "$HOME/.zshrc.local"
 fi
