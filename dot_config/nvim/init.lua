@@ -33,6 +33,8 @@ vim.api.nvim_create_autocmd("FileType", {
   pattern = "markdown",
   callback = function()
     pcall(vim.treesitter.start)
+    -- Don't render ~text~ with a strike-through (Tree-sitter markdown highlight).
+    vim.api.nvim_set_hl(0, "@markup.strikethrough", {})
   end,
 })
 
