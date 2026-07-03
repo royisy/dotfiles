@@ -18,3 +18,7 @@ delivery = "herdr"
 
 [ui.sound]
 enabled = true
+
+# Always open new tabs/panes in $HOME instead of inheriting the current cwd.
+[terminal]
+new_cwd = "home"
