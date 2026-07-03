@@ -10,3 +10,11 @@ focus_pane_right = ["prefix+l", "alt+l"]
 # Switch tabs without prefix: Shift + Left/Right (matches tmux)
 next_tab = ["prefix+n", "shift+right"]
 previous_tab = ["prefix+p", "shift+left"]
+
+# Notify (and play a sound) when an agent finishes or needs input.
+# delivery defaults to "off"; "herdr" shows an in-UI toast (reliable on WSL2).
+[ui.toast]
+delivery = "herdr"
+
+[ui.sound]
+enabled = true
