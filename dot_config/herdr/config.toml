@@ -1,0 +1,12 @@
+[keys]
+prefix = "ctrl+a"
+
+# Switch panes without prefix: Alt + h/j/k/l (vim-style, matches tmux)
+focus_pane_left = ["prefix+h", "alt+h"]
+focus_pane_down = ["prefix+j", "alt+j"]
+focus_pane_up = ["prefix+k", "alt+k"]
+focus_pane_right = ["prefix+l", "alt+l"]
+
+# Switch tabs without prefix: Shift + Left/Right (matches tmux)
+next_tab = ["prefix+n", "shift+right"]
+previous_tab = ["prefix+p", "shift+left"]
