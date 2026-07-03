@@ -5,9 +5,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"$TMUX_PANE\" ] && { tmux set-option -w -t \"$TMUX_PANE\" window-status-style 'bg=blue,fg=white'; tmux set-option -w -t \"$TMUX_PANE\" @busy 1; } 2>/dev/null",
+            "command": "[ -n \"$TMUX_PANE\" ] && { tmux set-option -w -t \"$TMUX_PANE\" window-status-style 'bg=yellow,fg=black'; tmux set-option -w -t \"$TMUX_PANE\" @busy 1; tmux set-option -uw -t \"$TMUX_PANE\" @claude_done; } 2>/dev/null",
             "async": true,
-            "statusMessage": "tmux: mark window busy"
+            "statusMessage": "tmux: mark window running"
           }
         ]
       }
@@ -17,9 +17,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "[ -n \"$TMUX_PANE\" ] && { tmux set-option -uw -t \"$TMUX_PANE\" window-status-style; tmux set-option -uw -t \"$TMUX_PANE\" @busy; } 2>/dev/null",
+            "command": "[ -n \"$TMUX_PANE\" ] && { if [ \"$(tmux display-message -p -t \"$TMUX_PANE\" '#{window_active}')\" = 1 ]; then tmux set-option -uw -t \"$TMUX_PANE\" window-status-style; tmux set-option -uw -t \"$TMUX_PANE\" @busy; tmux set-option -uw -t \"$TMUX_PANE\" @claude_done; else tmux set-option -w -t \"$TMUX_PANE\" window-status-style 'bg=blue,fg=white'; tmux set-option -w -t \"$TMUX_PANE\" @busy 1; tmux set-option -w -t \"$TMUX_PANE\" @claude_done 1; fi; } 2>/dev/null",
             "async": true,
-            "statusMessage": "tmux: clear window busy"
+            "statusMessage": "tmux: mark window done"
           },
           {
             "type": "command",
