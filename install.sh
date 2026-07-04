@@ -7,7 +7,7 @@
 # - apt update runs at most once
 # - apt packages are installed in one batch where possible
 #
-# It installs common CLI tools, chezmoi, Oh My Zsh, Codex, and Claude Code.
+# It installs common CLI tools, Herdr, chezmoi, Oh My Zsh, Codex, and Claude Code.
 # It does not manage credentials, API keys, or authentication state.
 # It does not change the default shell automatically; see the final message.
 #
@@ -120,7 +120,6 @@ install_apt_packages() {
   # listed here. apt only handles tools that have no user-local installer.
   if has_command git; then mark_skipped "git"; else apt_packages+=(git); fi
   if has_command zsh; then mark_skipped "zsh"; else apt_packages+=(zsh); fi
-  if has_command tmux; then mark_skipped "tmux"; else apt_packages+=(tmux); fi
   if ! has_command fd && ! has_command fdfind; then
     apt_packages+=(fd-find)
   else
@@ -212,7 +211,7 @@ verify_base_tools() {
 
   has_command git || warn "git command is still missing"
   has_command zsh || warn "zsh command is still missing"
-  has_command tmux || warn "tmux command is still missing"
+  has_command herdr || warn "herdr command is still missing"
   has_command bat || has_command batcat || warn "bat/batcat command is still missing"
   has_command delta || warn "delta command is still missing"
   has_command rg || warn "rg command is still missing"
@@ -448,32 +447,6 @@ install_oh_my_zsh_plugins() {
   install_oh_my_zsh_plugin "zsh-syntax-highlighting" "https://github.com/zsh-users/zsh-syntax-highlighting.git"
 }
 
-install_tmux_plugin() {
-  local name="$1"
-  local repo="$2"
-  local plugin_dir="$HOME/.tmux/plugins/$name"
-
-  if [[ -d "$plugin_dir" ]]; then
-    mark_skipped "tmux plugin: $name"
-    return
-  fi
-
-  if ! has_command git; then
-    printf '[ERROR] git is required to install tmux plugin: %s.\n' "$name" >&2
-    exit 1
-  fi
-
-  log "cloning tmux plugin: $name"
-  git clone --depth=1 "$repo" "$plugin_dir"
-  mark_installed "tmux plugin: $name"
-}
-
-install_tmux_plugins() {
-  install_tmux_plugin "tpm" "https://github.com/tmux-plugins/tpm.git"
-  install_tmux_plugin "tmux-resurrect" "https://github.com/tmux-plugins/tmux-resurrect.git"
-  install_tmux_plugin "tmux-continuum" "https://github.com/tmux-plugins/tmux-continuum.git"
-}
-
 install_chezmoi() {
   if has_command chezmoi; then
     mark_skipped "chezmoi"
@@ -492,6 +465,26 @@ install_chezmoi() {
     mark_installed "chezmoi"
   else
     warn "chezmoi installer finished, but chezmoi is not on PATH"
+  fi
+}
+
+install_herdr() {
+  if has_command herdr; then
+    mark_skipped "herdr"
+    return
+  fi
+
+  local installer="$TMP_DIR/herdr-install.sh"
+  download_installer "herdr" "https://herdr.dev/install.sh" "$installer"
+
+  log "running herdr official installer"
+  sh "$installer"
+  hash -r
+
+  if has_command herdr; then
+    mark_installed "herdr"
+  else
+    warn "herdr installer finished, but herdr is not on PATH"
   fi
 }
 
@@ -579,11 +572,11 @@ main() {
   install_user_local_cli_tools
   ensure_bat_command
   ensure_fd_command
+  install_herdr
   verify_base_tools
   install_nvim_plugins
   install_oh_my_zsh
   install_oh_my_zsh_plugins
-  install_tmux_plugins
   install_chezmoi
   install_codex
   install_claude_code
