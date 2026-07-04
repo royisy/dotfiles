@@ -1,6 +1,6 @@
 vim.opt.number = true -- Show line numbers
 vim.cmd.syntax("on") -- Enable syntax highlighting
-pcall(vim.cmd.colorscheme, "habamax") -- Explicit colorscheme: portable colors across nvim versions (0.10+ default is muted)
+pcall(vim.cmd.colorscheme, "vim") -- Explicit colorscheme: portable colors across nvim versions (0.10+ default is muted)
 vim.opt.clipboard = "unnamed" -- Use the system clipboard
 vim.opt.list = true -- Show invisible characters
 vim.opt.listchars = { tab = ">-", trail = "·" } -- Define invisible characters
