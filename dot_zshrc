@@ -12,6 +12,11 @@ if command -v zoxide >/dev/null 2>&1; then
     eval "$(zoxide init zsh)"
 fi
 
+# fzf: use fd and include hidden files (exclude .git); respects .gitignore
+export FZF_DEFAULT_COMMAND='fd --hidden --exclude .git'
+export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
+export FZF_ALT_C_COMMAND='fd --type d --hidden --exclude .git'
+
 # fzf key bindings: Ctrl-T (files), Alt-C (cd into dir), Ctrl-R (history)
 if [ -f /usr/share/doc/fzf/examples/key-bindings.zsh ]; then
     source /usr/share/doc/fzf/examples/key-bindings.zsh
