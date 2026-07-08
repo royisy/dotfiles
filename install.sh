@@ -115,7 +115,7 @@ install_apt_packages() {
 
   local apt_packages=()
 
-  # Note: bat, delta, ripgrep, and zoxide are installed from GitHub releases into
+  # Note: bat, delta, ripgrep, eza, and zoxide are installed from GitHub releases into
   # ~/.local/bin (see install_user_local_cli_tools), so they are intentionally not
   # listed here. apt only handles tools that have no user-local installer.
   if has_command git; then mark_skipped "git"; else apt_packages+=(git); fi
@@ -315,6 +315,23 @@ install_ripgrep() {
   install_release_binary "rg" "https://github.com/BurntSushi/ripgrep/releases/download/${tag}/${archive}" "$archive" "ripgrep-${tag}-x86_64-unknown-linux-musl/rg"
 }
 
+install_eza() {
+  if has_command eza; then
+    mark_skipped "eza"
+    return
+  fi
+
+  if ! has_command jq; then
+    printf '[ERROR] jq is required to install eza from GitHub releases.\n' >&2
+    exit 1
+  fi
+
+  local tag archive
+  tag="$(github_latest_tag eza-community/eza)"
+  archive="eza_x86_64-unknown-linux-musl.tar.gz"
+  install_release_binary "eza" "https://github.com/eza-community/eza/releases/download/${tag}/${archive}" "$archive" "eza"
+}
+
 install_zoxide() {
   if has_command zoxide; then
     mark_skipped "zoxide"
@@ -373,6 +390,7 @@ install_user_local_cli_tools() {
   install_bat
   install_delta
   install_ripgrep
+  install_eza
   install_zoxide
   install_lazygit
 }
