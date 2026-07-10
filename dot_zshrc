@@ -1,5 +1,8 @@
 export PATH="$HOME/.local/bin:$PATH"
 
+# default editor
+export EDITOR=nvim
+
 if [ -f "$HOME/.oh-my-zshrc" ]; then
     source "$HOME/.oh-my-zshrc"
 fi
