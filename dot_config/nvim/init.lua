@@ -44,17 +44,16 @@ vim.keymap.set("n", "<Esc><Esc>", "<cmd>nohlsearch<cr>")
 vim.keymap.set("n", "<CR>", "o<Esc>")
 vim.keymap.set("n", "<leader>w", "<cmd>set wrap!<cr>") -- Toggle line wrapping (default on)
 
--- Restore the last cursor position when reopening a file.
-vim.api.nvim_create_autocmd("BufReadPost", {
-  callback = function(args)
-    local position = vim.api.nvim_buf_get_mark(args.buf, '"')
-    local line_count = vim.api.nvim_buf_line_count(args.buf)
-
-    if position[1] > 1 and position[1] <= line_count then
-      pcall(vim.api.nvim_win_set_cursor, 0, position)
-    end
-  end,
-})
+-- Persist the cursor position independently of ShaDa marks.
+vim.opt.viewoptions = { "cursor" }
+vim.cmd([[
+  augroup cursor_view
+    autocmd!
+    autocmd BufWinLeave * if &buftype ==# '' && expand('%') !=# '' | mkview! | endif
+    autocmd BufWinEnter * if &buftype ==# '' && expand('%') !=# '' | silent! loadview | endif
+    autocmd VimEnter * if &buftype ==# '' && expand('%') !=# '' | silent! loadview | endif
+  augroup END
+]])
 
 local has_fzf_lua, fzf_lua = pcall(require, "fzf-lua")
 if has_fzf_lua then
