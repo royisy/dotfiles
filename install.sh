@@ -16,6 +16,8 @@
 
 set -euo pipefail
 
+NVIM_VERSION="${NVIM_VERSION:-0.12.4}"
+
 FAILED_COMMAND=""
 trap 'FAILED_COMMAND=$BASH_COMMAND' DEBUG
 trap 'printf "\n[ERROR] line %s: command failed: %s\n" "$LINENO" "$FAILED_COMMAND" >&2' ERR
@@ -127,7 +129,6 @@ install_apt_packages() {
   fi
   if has_command fzf; then mark_skipped "fzf"; else apt_packages+=(fzf); fi
   if has_command jq; then mark_skipped "jq"; else apt_packages+=(jq); fi
-  if has_command nvim; then mark_skipped "neovim"; else apt_packages+=(neovim); fi
   if has_command curl; then mark_skipped "curl"; else apt_packages+=(curl); fi
 
   if [[ ! -r /etc/ssl/certs/ca-certificates.crt ]]; then
@@ -256,6 +257,38 @@ install_release_binary() {
   tar -xzf "$TMP_DIR/$archive" -C "$TMP_DIR/$name"
   install -m 0755 "$TMP_DIR/$name/$binary_path" "$HOME/.local/bin/$name"
   mark_installed "$name"
+}
+
+install_neovim() {
+  local arch archive extracted_dir install_dir installed_version
+  arch="$(github_linux_arch)"
+  archive="nvim-linux-${arch}.tar.gz"
+  extracted_dir="$TMP_DIR/nvim-linux-${arch}"
+  install_dir="$HOME/.local/opt/nvim-linux-${arch}"
+  installed_version=""
+
+  if has_command nvim; then
+    installed_version="$(nvim --version | head -n 1)"
+  fi
+  if [[ "$installed_version" == "NVIM v${NVIM_VERSION}" ]]; then
+    mark_skipped "neovim ${NVIM_VERSION}"
+    return
+  fi
+
+  if ! has_command curl || ! has_command tar; then
+    printf '[ERROR] curl and tar are required to install Neovim.\n' >&2
+    exit 1
+  fi
+
+  download_installer "neovim ${NVIM_VERSION}" \
+    "https://github.com/neovim/neovim/releases/download/v${NVIM_VERSION}/${archive}" \
+    "$TMP_DIR/$archive"
+  tar -xzf "$TMP_DIR/$archive" -C "$TMP_DIR"
+  mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
+  rm -rf "$install_dir"
+  mv "$extracted_dir" "$install_dir"
+  ln -sfn "$install_dir/bin/nvim" "$HOME/.local/bin/nvim"
+  mark_installed "neovim ${NVIM_VERSION}"
 }
 
 install_bat() {
@@ -587,6 +620,7 @@ main() {
 
   check_environment
   install_apt_packages
+  install_neovim
   install_user_local_cli_tools
   ensure_bat_command
   ensure_fd_command
