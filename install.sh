@@ -419,6 +419,34 @@ install_lazygit() {
   mark_installed "lazygit $tag"
 }
 
+install_hunk() {
+  if has_command hunk; then
+    mark_skipped "hunk"
+    return
+  fi
+
+  if ! has_command jq; then
+    printf '[ERROR] jq is required to install hunk from GitHub releases.\n' >&2
+    exit 1
+  fi
+
+  # hunk release assets use x64/arm64 rather than the x86_64/arm64 naming used elsewhere.
+  local hunk_arch
+  case "$(uname -m)" in
+    x86_64|amd64) hunk_arch="x64" ;;
+    aarch64|arm64) hunk_arch="arm64" ;;
+    *)
+      warn "unsupported architecture for hunk: $(uname -m)"
+      return
+      ;;
+  esac
+
+  local tag archive
+  tag="$(github_latest_tag modem-dev/hunk)"
+  archive="hunkdiff-linux-${hunk_arch}.tar.gz"
+  install_release_binary "hunk" "https://github.com/modem-dev/hunk/releases/download/${tag}/${archive}" "$archive" "hunkdiff-linux-${hunk_arch}/hunk"
+}
+
 install_user_local_cli_tools() {
   install_bat
   install_delta
@@ -426,6 +454,7 @@ install_user_local_cli_tools() {
   install_eza
   install_zoxide
   install_lazygit
+  install_hunk
 }
 
 install_nvim_plugin() {
