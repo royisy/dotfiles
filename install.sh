@@ -413,6 +413,11 @@ install_hunk() {
     exit 1
   fi
 
+  if ! has_command curl || ! has_command tar; then
+    printf '[ERROR] curl and tar are required to install hunk.\n' >&2
+    exit 1
+  fi
+
   # hunk release assets use x64/arm64 rather than the x86_64/arm64 naming used elsewhere.
   local hunk_arch
   case "$(uname -m)" in
@@ -424,10 +429,23 @@ install_hunk() {
       ;;
   esac
 
-  local tag archive
+  # Extract the whole release tree (not just the binary) so the bundled agent
+  # review skill ships alongside it. hunk locates that skill by walking up from
+  # the resolved binary path, so `hunk skill path` only works when skills/ sits
+  # next to the executable; hence the neovim-style opt dir plus a bin symlink.
+  local tag archive extracted_dir install_dir
   tag="$(github_latest_tag modem-dev/hunk)"
   archive="hunkdiff-linux-${hunk_arch}.tar.gz"
-  install_release_binary "hunk" "https://github.com/modem-dev/hunk/releases/download/${tag}/${archive}" "$archive" "hunkdiff-linux-${hunk_arch}/hunk"
+  extracted_dir="$TMP_DIR/hunkdiff-linux-${hunk_arch}"
+  install_dir="$HOME/.local/opt/hunkdiff-linux-${hunk_arch}"
+
+  download_installer "hunk" "https://github.com/modem-dev/hunk/releases/download/${tag}/${archive}" "$TMP_DIR/$archive"
+  tar -xzf "$TMP_DIR/$archive" -C "$TMP_DIR"
+  mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
+  rm -rf "$install_dir"
+  mv "$extracted_dir" "$install_dir"
+  ln -sfn "$install_dir/hunk" "$HOME/.local/bin/hunk"
+  mark_installed "hunk $tag"
 }
 
 install_user_local_cli_tools() {
