@@ -117,7 +117,7 @@ install_apt_packages() {
 
   local apt_packages=()
 
-  # Note: bat, delta, ripgrep, eza, and zoxide are installed from GitHub releases into
+  # Note: bat, ripgrep, eza, and zoxide are installed from GitHub releases into
   # ~/.local/bin (see install_user_local_cli_tools), so they are intentionally not
   # listed here. apt only handles tools that have no user-local installer.
   if has_command git; then mark_skipped "git"; else apt_packages+=(git); fi
@@ -214,7 +214,7 @@ verify_base_tools() {
   has_command zsh || warn "zsh command is still missing"
   has_command herdr || warn "herdr command is still missing"
   has_command bat || has_command batcat || warn "bat/batcat command is still missing"
-  has_command delta || warn "delta command is still missing"
+  has_command hunk || warn "hunk command is still missing"
   has_command rg || warn "rg command is still missing"
   has_command fd || has_command fdfind || warn "fd/fdfind command is still missing"
   has_command fzf || warn "fzf command is still missing"
@@ -312,23 +312,6 @@ install_bat() {
   version="${tag#v}"
   archive="bat-v${version}-x86_64-unknown-linux-gnu.tar.gz"
   install_release_binary "bat" "https://github.com/sharkdp/bat/releases/download/${tag}/${archive}" "$archive" "bat-v${version}-x86_64-unknown-linux-gnu/bat"
-}
-
-install_delta() {
-  if has_command delta; then
-    mark_skipped "delta"
-    return
-  fi
-
-  if ! has_command jq; then
-    printf '[ERROR] jq is required to install delta from GitHub releases.\n' >&2
-    exit 1
-  fi
-
-  local tag archive
-  tag="$(github_latest_tag dandavison/delta)"
-  archive="delta-${tag}-x86_64-unknown-linux-gnu.tar.gz"
-  install_release_binary "delta" "https://github.com/dandavison/delta/releases/download/${tag}/${archive}" "$archive" "delta-${tag}-x86_64-unknown-linux-gnu/delta"
 }
 
 install_ripgrep() {
@@ -449,7 +432,6 @@ install_hunk() {
 
 install_user_local_cli_tools() {
   install_bat
-  install_delta
   install_ripgrep
   install_eza
   install_zoxide
