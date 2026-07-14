@@ -6,9 +6,6 @@
 [core]
 	editor = vi
 	pager = hunk pager
-[interactive]
-	# hunk has no --color-only filter, so `git add -p` still goes through delta.
-	diffFilter = delta --color-only
 [merge]
 	conflictStyle = zdiff3
 [push]
