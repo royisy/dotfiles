@@ -37,3 +37,10 @@ if command -v eza >/dev/null 2>&1; then
 else
     alias ll='ls -la'
 fi
+
+# Review the working tree in Hunk with auto-reload. Uses `hunk diff` (not the
+# git pager) so --watch has a reopenable Git-backed input; shadows the seldom
+# used `hd` hexdump symlink.
+if command -v hunk >/dev/null 2>&1; then
+    alias hd='hunk diff --watch'
+fi
