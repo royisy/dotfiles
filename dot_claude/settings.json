@@ -58,5 +58,13 @@
   "statusLine": {
     "type": "command",
     "command": "bash ~/.claude/statusline.sh"
+  },
+  "permissions": {
+    "allow": [
+      "Bash(win-notify:*)",
+      "Bash(grep:*)",
+      "Bash(ruff format:*)",
+      "Bash(ruff check:*)"
+    ]
   }
 }
