@@ -66,5 +66,8 @@
       "Bash(ruff format:*)",
       "Bash(ruff check:*)"
     ]
+  },
+  "enabledPlugins": {
+    "skill-creator@claude-plugins-official": true
   }
 }
