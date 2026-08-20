@@ -17,7 +17,9 @@ if [ -n "$five" ]; then
   [ -n "$reset" ] && [ -n "$rt" ] && usage="$usage →$rt"
 fi
 
+orange=$'\033[38;5;208m'
+reset_c=$'\033[0m'
 out="$short"
 [ -n "$branch" ] && out="$out  $branch"
-[ -n "$usage" ] && out="$out  ·  $usage"
+[ -n "$usage" ] && out="$out  ·  ${orange}${usage}${reset_c}"
 printf '%s' "$out"
