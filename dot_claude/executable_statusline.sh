@@ -6,12 +6,16 @@ dir=$(printf '%s' "$input" | jq -r '.workspace.current_dir // .cwd // empty' 2>/
 short="${dir/#$HOME/~}"
 branch=$(git -C "$dir" branch --show-current 2>/dev/null)
 
-# Plan usage (Pro/Max): present only after the first API response of a session
+# Plan usage (Pro/Max): present only after the first API response of a session.
+# Show 5-hour window usage and when that window resets (local time).
 five=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty' 2>/dev/null)
-week=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty' 2>/dev/null)
+reset=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.resets_at // empty' 2>/dev/null)
 usage=""
-[ -n "$five" ] && usage="5h $(printf '%.0f' "$five")%"
-[ -n "$week" ] && usage="${usage:+$usage  }7d $(printf '%.0f' "$week")%"
+if [ -n "$five" ]; then
+  usage="5h $(printf '%.0f' "$five")%"
+  rt=$(date -d "@$reset" +%H:%M 2>/dev/null)
+  [ -n "$reset" ] && [ -n "$rt" ] && usage="$usage →$rt"
+fi
 
 out="$short"
 [ -n "$branch" ] && out="$out  $branch"
