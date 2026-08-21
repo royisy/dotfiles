@@ -70,5 +70,6 @@
   },
   "enabledPlugins": {
     "skill-creator@claude-plugins-official": true
-  }
+  },
+  "disableRemoteControl": true
 }
