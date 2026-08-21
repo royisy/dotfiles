@@ -5,6 +5,8 @@ dir=$(printf '%s' "$input" | jq -r '.workspace.current_dir // .cwd // empty' 2>/
 [ -z "$dir" ] && dir="$PWD"
 short="${dir/#$HOME/~}"
 branch=$(git -C "$dir" branch --show-current 2>/dev/null)
+model=$(printf '%s' "$input" | jq -r '.model.display_name // empty' 2>/dev/null)
+ctx=$(printf '%s' "$input" | jq -r '.context_window.used_percentage // empty' 2>/dev/null)
 
 reset_c=$'\033[0m'
 
@@ -40,12 +42,14 @@ five=$(printf  '%s' "$input" | jq -r '.rate_limits.five_hour.used_percentage // 
 freset=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.resets_at // empty' 2>/dev/null)
 week=$(printf  '%s' "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty' 2>/dev/null)
 wreset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty' 2>/dev/null)
+add_seg "ctx" "$ctx" "" ""
 add_seg "5h" "$five" "$freset" "%H:%M"
 add_seg "7d" "$week" "$wreset" "%-m/%-d"
 
-# Line 1: path + branch (may be truncated). Line 2: usage on its own short row.
+# Line 1: path + branch + model (may be truncated). Line 2: usage row.
 line1="$short"
 [ -n "$branch" ] && line1="$line1  $branch"
+[ -n "$model" ] && line1="$line1  $model"
 if [ -n "$segs" ]; then
   printf '%s\n%s' "$line1" "$segs"
 else
