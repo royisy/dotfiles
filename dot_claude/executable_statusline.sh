@@ -10,7 +10,7 @@ ctx=$(printf '%s' "$input" | jq -r '.context_window.used_percentage // empty' 2>
 
 reset_c=$'\033[0m'
 
-# heat <pct> -> truecolor escape, uniform blue(0%)->green->yellow->red(100%)
+# heat <val0-100> -> truecolor escape, uniform blue(0)->green->yellow->red(100)
 heat() {
   awk -v p="$1" 'BEGIN{
     if(p<0)p=0; if(p>100)p=100;
@@ -25,26 +25,52 @@ heat() {
 }
 
 # Plan usage (Pro/Max): present only after the first API response of a session.
-# Each window is coloured by its own usage. 5h shows reset time, 7d reset date.
-segs=""
-add_seg() { # $1 label  $2 pct  $3 reset_epoch  $4 date-fmt
-  [ -z "$2" ] && return
-  local p seg rt
-  p=$(printf '%.0f' "$2")
-  seg="$1 ${p}%"
-  rt=$(date -d "@$3" +"$4" 2>/dev/null)
-  [ -n "$3" ] && [ -n "$rt" ] && seg="$seg →$rt"
-  seg="$(heat "$p")${seg}${reset_c}"
-  segs="${segs:+$segs   }$seg"
-}
-
 five=$(printf  '%s' "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty' 2>/dev/null)
 freset=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.resets_at // empty' 2>/dev/null)
 week=$(printf  '%s' "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty' 2>/dev/null)
 wreset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty' 2>/dev/null)
-add_seg "ctx" "$ctx" "" ""
-add_seg "5h" "$five" "$freset" "%H:%M"
-add_seg "7d" "$week" "$wreset" "%-m/%-d"
+
+segs=""
+append() { segs="${segs:+$segs   }$1"; }         # 3-space separated segments
+
+# Context window usage, coloured by its own level.
+if [ -n "$ctx" ]; then
+  p=$(printf '%.0f' "$ctx")
+  append "$(heat "$p")ctx ${p}%${reset_c}"
+fi
+
+# 5-hour window: usage% + reset time + pace badge (fast/slow vs elapsed time).
+if [ -n "$five" ]; then
+  p=$(printf '%.0f' "$five")
+  seg="5h ${p}%"
+  rt=$(date -d "@$freset" +%H:%M 2>/dev/null)
+  [ -n "$freset" ] && [ -n "$rt" ] && seg="$seg →$rt"
+  seg="$(heat "$p")${seg}${reset_c}"
+  # Pace = actual usage / usage expected if spent evenly over the 5h window.
+  # Window started 5h (18000s) before it resets; skip the noisy first 10 min.
+  if [ -n "$freset" ]; then
+    now=$(date +%s)
+    pace=$(awk -v u="$five" -v fr="$freset" -v now="$now" 'BEGIN{
+      el=now-(fr-18000); if(el<600)exit;
+      f=el/18000; if(f>1)f=1; e=f*100; if(e<=0)exit;
+      printf "%.2f", u/e }')
+    if [ -n "$pace" ]; then
+      lab=$(awk -v p="$pace" 'BEGIN{print (p>=1.5)?"CRIT":(p>=1.1)?"WARN":"OK"}')
+      hv=$(awk -v p="$pace" 'BEGIN{v=(p-0.5)*100; if(v<0)v=0; if(v>100)v=100; print v}')
+      seg="$seg $(heat "$hv")${lab}${reset_c}"
+    fi
+  fi
+  append "$seg"
+fi
+
+# 7-day window: usage% + reset date.
+if [ -n "$week" ]; then
+  p=$(printf '%.0f' "$week")
+  seg="7d ${p}%"
+  rt=$(date -d "@$wreset" +'%-m/%-d' 2>/dev/null)
+  [ -n "$wreset" ] && [ -n "$rt" ] && seg="$seg →$rt"
+  append "$(heat "$p")${seg}${reset_c}"
+fi
 
 # Line 1: path + branch (with "*" when the working tree is dirty).
 dirty=""
@@ -52,7 +78,7 @@ dirty=""
 line1="$short"
 [ -n "$branch" ] && line1="$line1  ${branch}${dirty}"
 
-# Line 2: model + usage segments (percentages).
+# Line 2: model + usage segments.
 line2="$model"
 [ -n "$segs" ] && line2="${line2:+$line2   }$segs"
 
