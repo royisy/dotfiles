@@ -20,6 +20,11 @@ heat() {
     if(reg==0){r=1;g=x;b=0} else if(reg==1){r=x;g=1;b=0}
     else if(reg==2){r=0;g=1;b=x} else if(reg==3){r=0;g=x;b=1}
     else {r=x;g=0;b=1}
+    # Deep blue is too dark to read on a dark background. Only when blue is
+    # the dominant channel, lift the color toward white to a min luminance;
+    # warm colors (red/orange) keep full saturation. Hue is preserved.
+    lum=0.299*r+0.587*g+0.114*b; floor=0.6;
+    if(b>=r && b>=g && lum<floor){ t=(floor-lum)/(1-lum); r=r+(1-r)*t; g=g+(1-g)*t; b=b+(1-b)*t }
     printf "\033[38;2;%d;%d;%dm", r*255+0.5, g*255+0.5, b*255+0.5;
   }'
 }
