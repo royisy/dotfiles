@@ -46,12 +46,18 @@ add_seg "ctx" "$ctx" "" ""
 add_seg "5h" "$five" "$freset" "%H:%M"
 add_seg "7d" "$week" "$wreset" "%-m/%-d"
 
-# Line 1: path + branch + model (may be truncated). Line 2: usage row.
+# Line 1: path + branch (with "*" when the working tree is dirty).
+dirty=""
+[ -n "$branch" ] && [ -n "$(git -C "$dir" status --porcelain 2>/dev/null)" ] && dirty="*"
 line1="$short"
-[ -n "$branch" ] && line1="$line1  $branch"
-[ -n "$model" ] && line1="$line1  $model"
-if [ -n "$segs" ]; then
-  printf '%s\n%s' "$line1" "$segs"
+[ -n "$branch" ] && line1="$line1  ${branch}${dirty}"
+
+# Line 2: model + usage segments (percentages).
+line2="$model"
+[ -n "$segs" ] && line2="${line2:+$line2   }$segs"
+
+if [ -n "$line2" ]; then
+  printf '%s\n%s' "$line1" "$line2"
 else
   printf '%s' "$line1"
 fi
