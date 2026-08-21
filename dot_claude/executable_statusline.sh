@@ -48,17 +48,21 @@ if [ -n "$ctx" ]; then
   append "$(heat "$p")ctx ${p}%${reset_c}"
 fi
 
-# 5-hour window: usage% + reset time + pace badge (fast/slow vs elapsed time).
+# 5-hour window: usage% + reset time + time left + pace badge.
 if [ -n "$five" ]; then
+  now=$(date +%s)
   p=$(printf '%.0f' "$five")
   seg="5h ${p}%"
-  rt=$(date -d "@$freset" +%H:%M 2>/dev/null)
-  [ -n "$freset" ] && [ -n "$rt" ] && seg="$seg →$rt"
+  if [ -n "$freset" ]; then
+    rt=$(date -d "@$freset" +%H:%M 2>/dev/null)
+    [ -n "$rt" ] && seg="$seg →$rt"
+    rem=$(( freset - now ))
+    [ "$rem" -gt 0 ] && seg="$seg ($(awk -v s="$rem" 'BEGIN{h=int(s/3600);m=int((s%3600)/60); if(h>0)printf "%dh%02dm",h,m; else printf "%dm",m}'))"
+  fi
   seg="$(heat "$p")${seg}${reset_c}"
   # Pace = actual usage / usage expected if spent evenly over the 5h window.
   # Window started 5h (18000s) before it resets; skip the noisy first 10 min.
   if [ -n "$freset" ]; then
-    now=$(date +%s)
     pace=$(awk -v u="$five" -v fr="$freset" -v now="$now" 'BEGIN{
       el=now-(fr-18000); if(el<600)exit;
       f=el/18000; if(f>1)f=1; e=f*100; if(e<=0)exit;
