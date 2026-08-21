@@ -32,7 +32,12 @@ if [ -n "$five" ]; then
 fi
 
 reset_c=$'\033[0m'
-out="$short"
-[ -n "$branch" ] && out="$out  $branch"
-[ -n "$usage" ] && out="$out  ·  ${esc}${usage}${reset_c}"
-printf '%s' "$out"
+# Line 1: path + branch (may be truncated when long). Line 2: usage, kept on
+# its own short line so it is never cut off. Usage line only when available.
+line1="$short"
+[ -n "$branch" ] && line1="$line1  $branch"
+if [ -n "$usage" ]; then
+  printf '%s\n%s' "$line1" "${esc}${usage}${reset_c}"
+else
+  printf '%s' "$line1"
+fi
