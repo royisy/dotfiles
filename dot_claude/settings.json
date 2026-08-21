@@ -57,7 +57,8 @@
   },
   "statusLine": {
     "type": "command",
-    "command": "bash ~/.claude/statusline.sh"
+    "command": "bash ~/.claude/statusline.sh",
+    "refreshInterval": 60
   },
   "permissions": {
     "allow": [
