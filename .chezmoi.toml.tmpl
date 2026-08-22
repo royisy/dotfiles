@@ -1,0 +1,5 @@
+{{- $hostType := promptChoiceOnce . "hostType" "Host type" (list "workstation" "vps") -}}
+sourceDir = {{ .chezmoi.sourceDir | quote }}
+
+[data]
+hostType = {{ $hostType | quote }}
