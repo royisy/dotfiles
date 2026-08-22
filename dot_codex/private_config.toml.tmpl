@@ -7,5 +7,15 @@ network_access = true
 [projects."{{ .chezmoi.homeDir }}"]
 trust_level = "trusted"
 
+[tui]
+status_line = [
+  "weekly-limit",
+  "model-with-reasoning",
+  "current-dir",
+  "context-used",
+  "used-tokens",
+]
+status_line_use_colors = true
+
 [tui.model_availability_nux]
 "gpt-5.5" = 3
