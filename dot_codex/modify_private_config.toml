@@ -1,0 +1,28 @@
+{{- /* chezmoi:modify-template */ -}}
+{{- $config := dict -}}
+{{- if ne (.chezmoi.stdin | trim) "" -}}
+{{-   $config = .chezmoi.stdin | fromToml -}}
+{{- end -}}
+
+{{- $statusLine := list
+      "weekly-limit"
+      "model-with-reasoning"
+      "current-dir"
+      "context-used"
+      "used-tokens"
+-}}
+{{- $config = $config | setValueAtPath "tui.status_line" $statusLine -}}
+{{- $config = $config | setValueAtPath "tui.status_line_use_colors" true -}}
+
+{{- if eq .hostType "vps" -}}
+{{-   $config = $config | setValueAtPath "model" "gpt-5.6-sol" -}}
+{{-   $config = $config | setValueAtPath "model_reasoning_effort" "high" -}}
+{{-   $config = $config | setValueAtPath "approvals_reviewer" "auto_review" -}}
+{{-   $config = $config | setValueAtPath "features.hooks" true -}}
+{{- else -}}
+{{-   $config = $config | setValueAtPath "approval_policy" "on-request" -}}
+{{-   $config = $config | setValueAtPath "sandbox_mode" "read-only" -}}
+{{-   $config = $config | setValueAtPath "sandbox_workspace_write.network_access" true -}}
+{{- end -}}
+
+{{ $config | toToml }}

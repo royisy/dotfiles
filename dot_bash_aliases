@@ -1,0 +1,2 @@
+# Short launcher for Herdr on remote Bash sessions.
+alias h='herdr'

@@ -2,3 +2,7 @@ AGENTS.md
 LICENSE
 README.md
 install.sh
+
+{{ if ne .hostType "vps" }}
+.bash_aliases
+{{ end }}
