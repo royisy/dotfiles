@@ -3,6 +3,14 @@ LICENSE
 README.md
 install.sh
 
-{{ if ne .hostType "vps" }}
+{{ if eq .hostType "vps" }}
+.claude
+.config
+.gitconfig
+.hushlogin
+.oh-my-zshrc
+.tmux.conf
+.zshrc
+{{ else }}
 .bash_aliases
 {{ end }}
