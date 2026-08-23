@@ -41,14 +41,14 @@ wreset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty
 now=$(date +%s)
 
 # pace_badge <pace> -> " <colored OK|WARN|CRIT>" (empty if pace empty).
-# Three discrete labels, each a fixed colour: OK=green, WARN=amber, CRIT=red.
+# Standard traffic-light / Nagios palette: OK=green, WARN=yellow, CRIT=red.
 pace_badge() {
   [ -z "$1" ] && return
   local lab hv
   lab=$(awk -v p="$1" 'BEGIN{print (p>=1.5)?"CRIT":(p>=1.1)?"WARN":"OK"}')
   case "$lab" in
     OK)   hv=45 ;;
-    WARN) hv=78 ;;
+    WARN) hv=75 ;;
     CRIT) hv=100 ;;
   esac
   printf ' %s%s%s' "$(heat "$hv")" "$lab" "$reset_c"
