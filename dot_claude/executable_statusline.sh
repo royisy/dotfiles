@@ -100,13 +100,20 @@ if [ -n "$week" ]; then
   seg="$(heat "$p")${seg}${reset_c}"
   if [ -n "$wreset" ]; then
     ws=$(( wreset - 604800 ))                 # window start = reset - 7 days
-    dow0=$(date -d "@$ws" +%u 2>/dev/null)    # weekday of window start (1=Mon..7=Sun)
-    pace=$(awk -v u="$week" -v ws="$ws" -v now="$now" -v dow0="$dow0" 'BEGIN{
-      span=now-ws; if(span<0)span=0; work=0;
-      for(d=0; d*86400<span && d<7; d++){
-        dow=((dow0-1+d)%7)+1;                 # weekday of day d
-        if(dow<=5){ s=d*86400; e=(d+1)*86400; if(e>span)e=span; if(e>s)work+=e-s }
-      }
+    # Sum weekday seconds inside [ws, now], counting each CALENDAR day by its
+    # own weekday (aligned to local midnight, not the window's start time).
+    work=0
+    cur=$(date -d "$(date -d "@$ws" +%Y-%m-%d) 00:00:00" +%s 2>/dev/null)
+    while [ -n "$cur" ] && [ "$cur" -lt "$now" ]; do
+      nxt=$(( cur + 86400 ))
+      s=$cur; [ "$ws"  -gt "$s" ] && s=$ws     # clip to window start
+      e=$nxt; [ "$now" -lt "$e" ] && e=$now    # clip to now
+      if [ "$e" -gt "$s" ] && [ "$(date -d "@$cur" +%u 2>/dev/null)" -le 5 ]; then
+        work=$(( work + e - s ))
+      fi
+      cur=$nxt
+    done
+    pace=$(awk -v u="$week" -v work="$work" 'BEGIN{
       wd=work/86400; if(wd<0.1)exit;          # working days elapsed; skip if <~2.4h
       e=wd/5*100; if(e<=0)exit;               # expected % (5 working days = 100%)
       printf "%.2f", u/e }')
