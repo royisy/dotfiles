@@ -40,12 +40,17 @@ week=$(printf  '%s' "$input" | jq -r '.rate_limits.seven_day.used_percentage // 
 wreset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty' 2>/dev/null)
 now=$(date +%s)
 
-# pace_badge <pace> -> " <colored OK|WARN|CRIT>" (empty if pace empty)
+# pace_badge <pace> -> " <colored OK|WARN|CRIT>" (empty if pace empty).
+# Three discrete labels, each a fixed colour: OK=green, WARN=amber, CRIT=red.
 pace_badge() {
   [ -z "$1" ] && return
   local lab hv
   lab=$(awk -v p="$1" 'BEGIN{print (p>=1.5)?"CRIT":(p>=1.1)?"WARN":"OK"}')
-  hv=$(awk -v p="$1" 'BEGIN{v=(p-0.5)*100; if(v<0)v=0; if(v>100)v=100; print v}')
+  case "$lab" in
+    OK)   hv=45 ;;
+    WARN) hv=78 ;;
+    CRIT) hv=100 ;;
+  esac
   printf ' %s%s%s' "$(heat "$hv")" "$lab" "$reset_c"
 }
 
