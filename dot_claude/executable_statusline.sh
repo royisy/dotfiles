@@ -40,16 +40,22 @@ week=$(printf  '%s' "$input" | jq -r '.rate_limits.seven_day.used_percentage // 
 wreset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty' 2>/dev/null)
 now=$(date +%s)
 
-# pace_badge <pace> -> " <colored OK|WARN|CRIT>" (empty if pace empty).
+# pace_badge <pace> <used%> -> " <colored OK|WARN|CRIT>".
+# Severity is the WORSE of two signals: the pace trajectory (burning faster
+# than the window can sustain) and the absolute usage level (how close to the
+# ceiling). So hitting ~100% always reads CRIT even when perfectly paced.
 # Standard traffic-light / Nagios palette: OK=green, WARN=yellow, CRIT=red.
 pace_badge() {
-  [ -z "$1" ] && return
-  local lab hv
-  lab=$(awk -v p="$1" 'BEGIN{print (p>=1.5)?"CRIT":(p>=1.1)?"WARN":"OK"}')
-  case "$lab" in
-    OK)   hv=45 ;;
-    WARN) hv=75 ;;
-    CRIT) hv=100 ;;
+  local pace="$1" used="$2" ps=0 ls=0 sev lab hv
+  [ -n "$pace" ] && ps=$(awk -v p="$pace" 'BEGIN{print (p>=1.5)?2:(p>=1.1)?1:0}')
+  [ -n "$used" ] && ls=$(awk -v u="$used" 'BEGIN{print (u>=95)?2:(u>=85)?1:0}')
+  # Nothing to show: no pace signal (too early) and usage not elevated.
+  [ -z "$pace" ] && [ "$ls" -eq 0 ] && return
+  sev=$ps; [ "$ls" -gt "$sev" ] && sev=$ls
+  case "$sev" in
+    0) lab=OK;   hv=45  ;;
+    1) lab=WARN; hv=75  ;;
+    2) lab=CRIT; hv=100 ;;
   esac
   printf ' %s%s%s' "$(heat "$hv")" "$lab" "$reset_c"
 }
@@ -76,13 +82,14 @@ if [ -n "$five" ]; then
   seg="$(heat "$p")${seg}${reset_c}"
   # Pace = actual usage / usage expected if spent evenly over the 5h window.
   # Window started 5h (18000s) before it resets; skip the noisy first 10 min.
+  pace=""
   if [ -n "$freset" ]; then
     pace=$(awk -v u="$five" -v fr="$freset" -v now="$now" 'BEGIN{
       el=now-(fr-18000); if(el<600)exit;
       f=el/18000; if(f>1)f=1; e=f*100; if(e<=0)exit;
       printf "%.2f", u/e }')
-    seg="$seg$(pace_badge "$pace")"
   fi
+  seg="$seg$(pace_badge "$pace" "$five")"
   append "$seg"
 fi
 
@@ -98,6 +105,7 @@ if [ -n "$week" ]; then
     [ -n "$rt" ] && seg="$seg →$rt"
   fi
   seg="$(heat "$p")${seg}${reset_c}"
+  pace=""
   if [ -n "$wreset" ]; then
     ws=$(( wreset - 604800 ))                 # window start = reset - 7 days
     # Sum weekday seconds inside [ws, now], counting each CALENDAR day by its
@@ -117,8 +125,8 @@ if [ -n "$week" ]; then
       wd=work/86400; if(wd<0.1)exit;          # working days elapsed; skip if <~2.4h
       e=wd/5*100; if(e<=0)exit;               # expected % (5 working days = 100%)
       printf "%.2f", u/e }')
-    seg="$seg$(pace_badge "$pace")"
   fi
+  seg="$seg$(pace_badge "$pace" "$week")"
   append "$seg"
 fi
 
