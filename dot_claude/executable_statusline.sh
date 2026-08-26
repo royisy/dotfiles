@@ -33,12 +33,49 @@ heat() {
   }'
 }
 
-# Plan usage (Pro/Max): present only after the first API response of a session.
-five=$(printf  '%s' "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty' 2>/dev/null)
-freset=$(printf '%s' "$input" | jq -r '.rate_limits.five_hour.resets_at // empty' 2>/dev/null)
-week=$(printf  '%s' "$input" | jq -r '.rate_limits.seven_day.used_percentage // empty' 2>/dev/null)
-wreset=$(printf '%s' "$input" | jq -r '.rate_limits.seven_day.resets_at // empty' 2>/dev/null)
 now=$(date +%s)
+
+# Plan usage (Pro/Max): rate_limits arrive only in API responses, so an idle
+# session's stdin is stale or missing them, and the 5h window can be absent on
+# its own. Usage is per-account, so merge stdin with a shared cache and keep the
+# freshest per window: a later resets_at wins (newer window); within one window
+# the higher used% is newer (usage only rises until reset). Idle sessions then
+# show the latest values any active session has seen, refreshed via refreshInterval.
+CACHE="$HOME/.claude/statusline-usage-cache.json"
+cache=$(cat "$CACHE" 2>/dev/null)
+
+merge_window() {          # $1=key -> sets M_USED, M_RESET (may be empty)
+  local key="$1" su sr cu cr
+  su=$(printf '%s' "$input" | jq -r ".rate_limits.$key.used_percentage // empty" 2>/dev/null)
+  sr=$(printf '%s' "$input" | jq -r ".rate_limits.$key.resets_at // empty" 2>/dev/null)
+  cu=$(printf '%s' "$cache" | jq -r ".$key.used_percentage // empty" 2>/dev/null)
+  cr=$(printf '%s' "$cache" | jq -r ".$key.resets_at // empty" 2>/dev/null)
+  sr=${sr%.*}; cr=${cr%.*}
+  [ -n "$sr" ] && [ "$sr" -le "$now" ] && { su=""; sr=""; }   # drop expired window
+  [ -n "$cr" ] && [ "$cr" -le "$now" ] && { cu=""; cr=""; }
+  M_USED=""; M_RESET=""
+  if [ -n "$sr" ] && [ -n "$cr" ]; then
+    if   [ "$sr" -gt "$cr" ]; then M_USED="$su"; M_RESET="$sr"
+    elif [ "$cr" -gt "$sr" ]; then M_USED="$cu"; M_RESET="$cr"
+    else M_RESET="$sr"; M_USED=$(awk -v a="$su" -v b="$cu" 'BEGIN{print (a>=b)?a:b}'); fi
+  elif [ -n "$sr" ]; then M_USED="$su"; M_RESET="$sr"
+  elif [ -n "$cr" ]; then M_USED="$cu"; M_RESET="$cr"
+  fi
+}
+
+merge_window five_hour; five="$M_USED"; freset="$M_RESET"
+merge_window seven_day; week="$M_USED"; wreset="$M_RESET"
+
+# Persist the freshest known values so other/idle sessions can pick them up.
+if [ -n "$freset$wreset" ]; then
+  fh=null; sd=null
+  [ -n "$freset" ] && fh=$(printf '{"used_percentage":%s,"resets_at":%s}' "${five:-0}" "$freset")
+  [ -n "$wreset" ] && sd=$(printf '{"used_percentage":%s,"resets_at":%s}' "${week:-0}" "$wreset")
+  tmp=$(mktemp "$HOME/.claude/.usage-cache.XXXXXX" 2>/dev/null) && {
+    printf '{"five_hour":%s,"seven_day":%s}\n' "$fh" "$sd" > "$tmp" 2>/dev/null \
+      && mv -f "$tmp" "$CACHE" 2>/dev/null || rm -f "$tmp" 2>/dev/null
+  }
+fi
 
 # pace_badge <pace> <used%> -> " <colored OK|WARN|CRIT>".
 # Severity is the WORSE of two signals: the pace trajectory (burning faster
