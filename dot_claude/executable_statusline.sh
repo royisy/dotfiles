@@ -10,26 +10,21 @@ ctx=$(printf '%s' "$input" | jq -r '.context_window.used_percentage // empty' 2>
 
 reset_c=$'\033[0m'
 
-# heat <val0-100> -> truecolor escape, uniform blue(0)->green->yellow->red(100)
+# heat <val0-100> -> truecolor escape along Claude Code's own dark-theme palette:
+# permission/rate_limit_fill periwinkle (what /usage fills its bars with) -> success
+# -> warning -> error. These are the colours the rest of the UI already uses, so the
+# status line sits at the same muted brightness as "auto mode on" instead of the
+# neon full-saturation ramp it had before. Stops are placed at the pace_badge
+# levels (45/75/100), so a badge lands exactly on success/warning/error.
+STOPS="0,177,185,249 45,78,186,101 75,255,193,7 100,255,107,128"
 heat() {
-  awk -v p="$1" 'BEGIN{
+  awk -v p="$1" -v stops="$STOPS" 'BEGIN{
     if(p<0)p=0; if(p>100)p=100;
-    h=240*(1-p/100);
-    hp=h/60; a=hp-2*int(hp/2); d=a-1; if(d<0)d=-d; x=1-d;
-    reg=int(hp);
-    if(reg==0){r=1;g=x;b=0} else if(reg==1){r=x;g=1;b=0}
-    else if(reg==2){r=0;g=1;b=x} else if(reg==3){r=0;g=x;b=1}
-    else {r=x;g=0;b=1}
-    # Deep blue is too dark to read on a dark background. When blue is the
-    # dominant channel, brighten toward CYAN (raise green, drop red) rather
-    # than white, so it reads as sky-blue instead of purple. Warm colors keep
-    # full saturation so red stays vivid for CRIT.
-    lum=0.299*r+0.587*g+0.114*b; floor=0.6;
-    if(b>=r && b>=g && lum<floor){
-      den=0.587*(1-g)-0.299*r;
-      if(den>0){ t=(floor-lum)/den; if(t>1)t=1; if(t<0)t=0; r=r*(1-t); g=g+(1-g)*t }
-    }
-    printf "\033[38;2;%d;%d;%dm", r*255+0.5, g*255+0.5, b*255+0.5;
+    n=split(stops, st, " ");
+    for(i=1;i<=n;i++){ split(st[i], f, ","); pos[i]=f[1]; R[i]=f[2]; G[i]=f[3]; B[i]=f[4] }
+    k=1; while(k<n-1 && p>pos[k+1]) k++;
+    span=pos[k+1]-pos[k]; t=(span>0)?(p-pos[k])/span:0; if(t>1)t=1;
+    printf "\033[38;2;%d;%d;%dm", R[k]+(R[k+1]-R[k])*t+0.5, G[k]+(G[k+1]-G[k])*t+0.5, B[k]+(B[k+1]-B[k])*t+0.5;
   }'
 }
 
@@ -91,7 +86,8 @@ fi
 # Severity is the WORSE of two signals: the pace trajectory (burning faster
 # than the window can sustain) and the absolute usage level (how close to the
 # ceiling). So hitting ~100% always reads CRIT even when perfectly paced.
-# Standard traffic-light / Nagios palette: OK=green, WARN=yellow, CRIT=red.
+# OK=success, WARN=warning, CRIT=error - Claude Code's own semantic colours,
+# reached through heat() at the ramp stops that carry them.
 pace_badge() {
   local pace="$1" used="$2" ps=0 ls=0 sev lab hv
   [ -n "$pace" ] && ps=$(awk -v p="$pace" 'BEGIN{print (p>=1.5)?2:(p>=1.1)?1:0}')
