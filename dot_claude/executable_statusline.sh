@@ -110,23 +110,26 @@ pace_badge() {
 segs=""
 append() { segs="${segs:+$segs   }$1"; }         # 3-space separated segments
 
+# Only the values carry colour (usage % and the badge); labels, reset times and
+# time-remaining stay in the status line's default grey so the eye lands on the
+# numbers rather than on whole coloured phrases.
+
 # Context window usage, coloured by its own level.
 if [ -n "$ctx" ]; then
   p=$(printf '%.0f' "$ctx")
-  append "$(heat "$p")ctx ${p}%${reset_c}"
+  append "ctx $(heat "$p")${p}%${reset_c}"
 fi
 
 # 5-hour window: usage% + reset time + time left + pace badge.
 if [ -n "$five" ]; then
   p=$(printf '%.0f' "$five")
-  seg="5h ${p}%"
+  seg="5h $(heat "$p")${p}%${reset_c}"
   if [ -n "$freset" ]; then
     rt=$(date -d "@$freset" +%H:%M 2>/dev/null)
     [ -n "$rt" ] && seg="$seg →$rt"
     rem=$(( freset - now ))
     [ "$rem" -gt 0 ] && seg="$seg ($(awk -v s="$rem" 'BEGIN{h=int(s/3600);m=int((s%3600)/60); if(h>0)printf "%dh%02dm",h,m; else printf "%dm",m}'))"
   fi
-  seg="$(heat "$p")${seg}${reset_c}"
   # Pace = actual usage / usage expected if spent evenly over the 5h window.
   # Window started 5h (18000s) before it resets; skip the noisy first 10 min.
   pace=""
@@ -146,12 +149,11 @@ fi
 # not add to the expected burn, so 1 working day used should sit near 20%.
 if [ -n "$week" ]; then
   p=$(printf '%.0f' "$week")
-  seg="7d ${p}%"
+  seg="7d $(heat "$p")${p}%${reset_c}"
   if [ -n "$wreset" ]; then
     rt=$(date -d "@$wreset" +'%-m/%-d' 2>/dev/null)
     [ -n "$rt" ] && seg="$seg →$rt"
   fi
-  seg="$(heat "$p")${seg}${reset_c}"
   pace=""
   if [ -n "$wreset" ]; then
     ws=$(( wreset - 604800 ))                 # window start = reset - 7 days
