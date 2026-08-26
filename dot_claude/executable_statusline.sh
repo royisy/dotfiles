@@ -37,12 +37,22 @@ now=$(date +%s)
 
 # Plan usage (Pro/Max): rate_limits arrive only in API responses, so an idle
 # session's stdin is stale or missing them, and the 5h window can be absent on
-# its own. Usage is per-account, so merge stdin with a shared cache and keep the
-# freshest per window: a later resets_at wins (newer window); within one window
-# the higher used% is newer (usage only rises until reset). Idle sessions then
-# show the latest values any active session has seen, refreshed via refreshInterval.
+# its own. Usage is per-account, so merge stdin with a shared cache and keep
+# whichever source is FRESHER.
+#
+# Freshness is measured, not guessed: stdin's rate_limits come from this
+# session's last API response, so the transcript's mtime is when they were
+# produced, and the cache records the freshness of whatever wrote it. Comparing
+# resets_at instead would be wrong - resets_at is a server-side estimate that
+# can move EARLIER, and "later resets_at wins" then pins the cache to a stale
+# entry that no fresher payload can ever displace.
 CACHE="$HOME/.claude/statusline-usage-cache.json"
 cache=$(cat "$CACHE" 2>/dev/null)
+transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
+sfresh=$(stat -c %Y "$transcript" 2>/dev/null)
+[ -z "$sfresh" ] && sfresh="$now"       # no transcript to date it by: assume live
+cfresh=$(printf '%s' "$cache" | jq -r '.updated_at // 0' 2>/dev/null)
+case "$cfresh" in ''|*[!0-9]*) cfresh=0 ;; esac
 
 merge_window() {          # $1=key -> sets M_USED, M_RESET (may be empty)
   local key="$1" su sr cu cr
@@ -55,9 +65,8 @@ merge_window() {          # $1=key -> sets M_USED, M_RESET (may be empty)
   [ -n "$cr" ] && [ "$cr" -le "$now" ] && { cu=""; cr=""; }
   M_USED=""; M_RESET=""
   if [ -n "$sr" ] && [ -n "$cr" ]; then
-    if   [ "$sr" -gt "$cr" ]; then M_USED="$su"; M_RESET="$sr"
-    elif [ "$cr" -gt "$sr" ]; then M_USED="$cu"; M_RESET="$cr"
-    else M_RESET="$sr"; M_USED=$(awk -v a="$su" -v b="$cu" 'BEGIN{print (a>=b)?a:b}'); fi
+    if [ "$sfresh" -ge "$cfresh" ]; then M_USED="$su"; M_RESET="$sr"   # ties: prefer live
+    else M_USED="$cu"; M_RESET="$cr"; fi
   elif [ -n "$sr" ]; then M_USED="$su"; M_RESET="$sr"
   elif [ -n "$cr" ]; then M_USED="$cu"; M_RESET="$cr"
   fi
@@ -71,8 +80,9 @@ if [ -n "$freset$wreset" ]; then
   fh=null; sd=null
   [ -n "$freset" ] && fh=$(printf '{"used_percentage":%s,"resets_at":%s}' "${five:-0}" "$freset")
   [ -n "$wreset" ] && sd=$(printf '{"used_percentage":%s,"resets_at":%s}' "${week:-0}" "$wreset")
+  upd="$sfresh"; [ "$cfresh" -gt "$upd" ] && upd="$cfresh"   # stamp with the source's age
   tmp=$(mktemp "$HOME/.claude/.usage-cache.XXXXXX" 2>/dev/null) && {
-    printf '{"five_hour":%s,"seven_day":%s}\n' "$fh" "$sd" > "$tmp" 2>/dev/null \
+    printf '{"five_hour":%s,"seven_day":%s,"updated_at":%s}\n' "$fh" "$sd" "$upd" > "$tmp" 2>/dev/null \
       && mv -f "$tmp" "$CACHE" 2>/dev/null || rm -f "$tmp" 2>/dev/null
   }
 fi
