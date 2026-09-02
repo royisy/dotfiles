@@ -30,76 +30,98 @@ heat() {
 
 now=$(date +%s)
 
-# Plan usage (Pro/Max): rate_limits arrive only in API responses, so an idle
-# session's stdin is stale or missing them, and the 5h window can be absent on
-# its own. Usage is per-account, so merge stdin with a shared cache and keep
-# whichever source is FRESHER.
+# Plan usage (Pro/Max): rate_limits are built from the rate-limit headers of
+# the last API response THIS CLI process saw and are held in memory per
+# process, so an idle session serves an old snapshot and a process that has
+# been told nothing at all carries no rate_limits. Usage is per-account, so
+# merge stdin with a shared cache and keep the FRESHER snapshot.
 #
-# Freshness is measured, not guessed: stdin's rate_limits come from this
-# session's last API response, so the transcript's mtime is when they were
-# produced, and the cache records the freshness of whatever wrote it. Comparing
-# resets_at instead would be wrong - resets_at is a server-side estimate that
-# can move EARLIER, and "later resets_at wins" then pins the cache to a stale
-# entry that no fresher payload can ever displace.
+# five_hour is the clock. Both windows of a payload are read out of one and
+# the same header set, so they are exactly as old as each other, and 5h usage
+# only grows inside its window: the payload with the higher five_hour is the
+# later reading, and one whose 5h window has already expired predates the
+# current window entirely. Rank whole snapshots that way and take seven_day
+# off the winner rather than judging it on its own.
+#
+# The ranking is what matters, because seven_day does NOT only grow. Measured
+# across 15 sessions rendering at one instant: 12% wherever five_hour was
+# current, and 15/23/29/30/39/42% in sessions whose five_hour had expired -
+# the weekly figure decays as old usage ages out of it, so a stale snapshot
+# OVERSTATES it. "Take the larger" and "take whoever wrote last" both pin the
+# display to whichever idle session happened to render.
+#
+# An earlier version ranked by the transcript's mtime instead, on the
+# assumption that rate_limits only move when an API response arrives. They do
+# not - Claude Code re-probes the quota in the background, without writing a
+# transcript - so a session holding the correct numbers was demoted for
+# looking idle and the stale cache won. That is how 5h read 55% while the
+# account was in fact rate-limited at 100%, and 7d read 30% against a true 10%.
 CACHE="$HOME/.claude/statusline-usage-cache.json"
+CACHE_TTL=900                     # a cached snapshot older than this is ignored
 cache=$(cat "$CACHE" 2>/dev/null)
-transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
-sfresh=$(stat -c %Y "$transcript" 2>/dev/null)
-[ -z "$sfresh" ] && sfresh="$now"       # no transcript to date it by: assume live
-cfresh=$(printf '%s' "$cache" | jq -r '.updated_at // 0' 2>/dev/null)
-case "$cfresh" in ''|*[!0-9]*) cfresh=0 ;; esac
 
-# rate_limits only refresh when an API response arrives, so a session that has
-# been sitting idle keeps serving whatever it was told hours ago. Measured: a
-# session mid-turn writes its transcript every 1-348s, while idle ones ranged
-# from 497s to 15h - and every idle payload carried a seven_day figure an
-# entire window out of date. Freshness alone does not catch them: cfresh only
-# advances when some session writes, so once the active sessions are closed it
-# freezes and the next idle session wins the comparison and overwrites the
-# cache with its stale numbers. Cap what counts as live. Demoting a live
-# payload is harmless (the cache it falls back to is at least as fresh);
-# trusting a stale one corrupts every session, so err toward demoting.
-STALE_AFTER=300
-slive=1; [ "$((now - sfresh))" -gt "$STALE_AFTER" ] && slive=0
-
-merge_window() {          # $1=key -> sets M_USED, M_RESET, M_ROLLED (may be empty)
-  local key="$1" su sr cu cr
-  su=$(printf '%s' "$input" | jq -r ".rate_limits.$key.used_percentage // empty" 2>/dev/null)
-  sr=$(printf '%s' "$input" | jq -r ".rate_limits.$key.resets_at // empty" 2>/dev/null)
-  cu=$(printf '%s' "$cache" | jq -r ".$key.used_percentage // empty" 2>/dev/null)
-  cr=$(printf '%s' "$cache" | jq -r ".$key.resets_at // empty" 2>/dev/null)
-  sr=${sr%.*}; cr=${cr%.*}
-  # A source needs BOTH numbers to be usable. A resets_at without a usage
-  # figure would otherwise win the freshness contest below, hide the segment,
-  # and get persisted as a fabricated 0.
-  [ -z "$su" ] && sr=""
-  [ -z "$cu" ] && cr=""
-  M_ROLLED=""                                                 # window ended, successor unknown
-  [ -n "$sr" ] && [ "$sr" -le "$now" ] && { su=""; sr=""; M_ROLLED=1; }   # drop expired window
-  [ -n "$cr" ] && [ "$cr" -le "$now" ] && { cu=""; cr=""; M_ROLLED=1; }
-  M_USED=""; M_RESET=""
-  if [ -n "$sr" ] && [ -n "$cr" ]; then
-    if [ "$slive" = 1 ] && [ "$sfresh" -ge "$cfresh" ]; then M_USED="$su"; M_RESET="$sr"   # ties: prefer live
-    else M_USED="$cu"; M_RESET="$cr"; fi
-  elif [ -n "$sr" ]; then M_USED="$su"; M_RESET="$sr"
-  elif [ -n "$cr" ]; then M_USED="$cu"; M_RESET="$cr"
-  fi
+# read4 <json> <jq-prefix> -> R1..R4: 5h used, 5h reset, 7d used, 7d reset
+# ("" for anything absent). One jq per source instead of one per field.
+read4() {
+  R1=""; R2=""; R3=""; R4=""
+  { read -r R1; read -r R2; read -r R3; read -r R4; } <<EOF
+$(printf '%s' "$1" | jq -r "[$2.five_hour.used_percentage, $2.five_hour.resets_at, $2.seven_day.used_percentage, $2.seven_day.resets_at] | .[] | if . == null then \"\" else tostring end" 2>/dev/null)
+EOF
 }
 
-merge_window five_hour; five="$M_USED"; freset="$M_RESET"; frolled="$M_ROLLED"
-merge_window seven_day; week="$M_USED"; wreset="$M_RESET"; wrolled="$M_ROLLED"
+read4 "$input" '(.rate_limits // {})'; s_fu="$R1"; s_fr="${R2%.*}"; s_wu="$R3"; s_wr="${R4%.*}"
+read4 "$cache" '(. // {})';            c_fu="$R1"; c_fr="${R2%.*}"; c_wu="$R3"; c_wr="${R4%.*}"
+c_seen=$(printf '%s' "$cache" | jq -r '.seen_at // .updated_at // empty' 2>/dev/null)
+c_seen="${c_seen%.*}"; case "$c_seen" in ''|*[!0-9]*) c_seen=0 ;; esac
 
-# Persist the freshest known values so other/idle sessions can pick them up.
+# A window needs BOTH numbers to be usable. A resets_at without a usage figure
+# would otherwise win the ranking below, hide the segment, and get persisted as
+# a fabricated 0.
+[ -z "$s_fu" ] && s_fr=""; [ -z "$s_fr" ] && s_fu=""
+[ -z "$s_wu" ] && s_wr=""; [ -z "$s_wr" ] && s_wu=""
+[ -z "$c_fu" ] && c_fr=""; [ -z "$c_fr" ] && c_fu=""
+[ -z "$c_wu" ] && c_wr=""; [ -z "$c_wr" ] && c_wu=""
+
+# An expired window is over, not stale: drop it and remember the rollover.
+frolled=""; wrolled=""
+[ -n "$s_fr" ] && [ "$s_fr" -le "$now" ] && { s_fu=""; s_fr=""; frolled=1; }
+[ -n "$c_fr" ] && [ "$c_fr" -le "$now" ] && { c_fu=""; c_fr=""; frolled=1; }
+[ -n "$s_wr" ] && [ "$s_wr" -le "$now" ] && { s_wu=""; s_wr=""; wrolled=1; }
+[ -n "$c_wr" ] && [ "$c_wr" -le "$now" ] && { c_wu=""; c_wr=""; wrolled=1; }
+
+# An aged-out cache entry goes as a whole: nothing in it can be trusted to
+# still describe the account, and its seven_day has had time to decay away
+# from what it claims.
+[ "$((now - c_seen))" -gt "$CACHE_TTL" ] && { c_fu=""; c_fr=""; c_wu=""; c_wr=""; }
+
+# Rank by the five_hour clock: a live 5h window beats an expired or absent one,
+# a later window beats an earlier one, and inside one window more usage means a
+# later reading. Ties go to stdin - that one we know we are reading right now.
+winner=stdin
+if [ -n "$c_fr" ]; then
+  if [ -z "$s_fr" ] || [ "$c_fr" -gt "$s_fr" ]; then winner=cache
+  elif [ "$c_fr" -eq "$s_fr" ] && awk -v a="$c_fu" -v b="$s_fu" 'BEGIN{exit !(a>b)}'; then winner=cache
+  fi
+fi
+
+if [ "$winner" = cache ]; then
+  five="$c_fu"; freset="$c_fr"; week="$c_wu"; wreset="$c_wr"; seen="$c_seen"
+  [ -z "$wreset" ] && { week="$s_wu"; wreset="$s_wr"; }   # winner says nothing about 7d
+else
+  five="$s_fu"; freset="$s_fr"; week="$s_wu"; wreset="$s_wr"; seen="$now"
+  [ -z "$wreset" ] && { week="$c_wu"; wreset="$c_wr"; seen="$c_seen"; }
+fi
+
+# Persist the snapshot for sessions whose process holds no rate_limits yet.
+# seen_at is the age of the READING, not of this write, so a cached snapshot
+# that keeps winning still ages out on schedule instead of being renewed
+# forever by every session that copies it.
 if [ -n "$freset$wreset" ]; then
   fh=null; sd=null
   [ -n "$freset" ] && fh=$(printf '{"used_percentage":%s,"resets_at":%s}' "$five" "$freset")
   [ -n "$wreset" ] && sd=$(printf '{"used_percentage":%s,"resets_at":%s}' "$week" "$wreset")
-  # Stamp with the age of the source actually used. Starting from cfresh keeps
-  # an idle session from advertising its stale payload as fresh: it would then
-  # outrank the very cache entry it just copied.
-  upd="$cfresh"; [ "$slive" = 1 ] && [ "$sfresh" -gt "$upd" ] && upd="$sfresh"
   tmp=$(mktemp "$HOME/.claude/.usage-cache.XXXXXX" 2>/dev/null) && {
-    printf '{"five_hour":%s,"seven_day":%s,"updated_at":%s}\n' "$fh" "$sd" "$upd" > "$tmp" 2>/dev/null \
+    printf '{"five_hour":%s,"seven_day":%s,"seen_at":%s}\n' "$fh" "$sd" "$seen" > "$tmp" 2>/dev/null \
       && mv -f "$tmp" "$CACHE" 2>/dev/null || rm -f "$tmp" 2>/dev/null
   }
 fi
