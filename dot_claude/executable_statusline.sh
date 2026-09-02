@@ -49,15 +49,21 @@ sfresh=$(stat -c %Y "$transcript" 2>/dev/null)
 cfresh=$(printf '%s' "$cache" | jq -r '.updated_at // 0' 2>/dev/null)
 case "$cfresh" in ''|*[!0-9]*) cfresh=0 ;; esac
 
-merge_window() {          # $1=key -> sets M_USED, M_RESET (may be empty)
+merge_window() {          # $1=key -> sets M_USED, M_RESET, M_ROLLED (may be empty)
   local key="$1" su sr cu cr
   su=$(printf '%s' "$input" | jq -r ".rate_limits.$key.used_percentage // empty" 2>/dev/null)
   sr=$(printf '%s' "$input" | jq -r ".rate_limits.$key.resets_at // empty" 2>/dev/null)
   cu=$(printf '%s' "$cache" | jq -r ".$key.used_percentage // empty" 2>/dev/null)
   cr=$(printf '%s' "$cache" | jq -r ".$key.resets_at // empty" 2>/dev/null)
   sr=${sr%.*}; cr=${cr%.*}
-  [ -n "$sr" ] && [ "$sr" -le "$now" ] && { su=""; sr=""; }   # drop expired window
-  [ -n "$cr" ] && [ "$cr" -le "$now" ] && { cu=""; cr=""; }
+  # A source needs BOTH numbers to be usable. A resets_at without a usage
+  # figure would otherwise win the freshness contest below, hide the segment,
+  # and get persisted as a fabricated 0.
+  [ -z "$su" ] && sr=""
+  [ -z "$cu" ] && cr=""
+  M_ROLLED=""                                                 # window ended, successor unknown
+  [ -n "$sr" ] && [ "$sr" -le "$now" ] && { su=""; sr=""; M_ROLLED=1; }   # drop expired window
+  [ -n "$cr" ] && [ "$cr" -le "$now" ] && { cu=""; cr=""; M_ROLLED=1; }
   M_USED=""; M_RESET=""
   if [ -n "$sr" ] && [ -n "$cr" ]; then
     if [ "$sfresh" -ge "$cfresh" ]; then M_USED="$su"; M_RESET="$sr"   # ties: prefer live
@@ -67,20 +73,31 @@ merge_window() {          # $1=key -> sets M_USED, M_RESET (may be empty)
   fi
 }
 
-merge_window five_hour; five="$M_USED"; freset="$M_RESET"
-merge_window seven_day; week="$M_USED"; wreset="$M_RESET"
+merge_window five_hour; five="$M_USED"; freset="$M_RESET"; frolled="$M_ROLLED"
+merge_window seven_day; week="$M_USED"; wreset="$M_RESET"; wrolled="$M_ROLLED"
 
 # Persist the freshest known values so other/idle sessions can pick them up.
 if [ -n "$freset$wreset" ]; then
   fh=null; sd=null
-  [ -n "$freset" ] && fh=$(printf '{"used_percentage":%s,"resets_at":%s}' "${five:-0}" "$freset")
-  [ -n "$wreset" ] && sd=$(printf '{"used_percentage":%s,"resets_at":%s}' "${week:-0}" "$wreset")
+  [ -n "$freset" ] && fh=$(printf '{"used_percentage":%s,"resets_at":%s}' "$five" "$freset")
+  [ -n "$wreset" ] && sd=$(printf '{"used_percentage":%s,"resets_at":%s}' "$week" "$wreset")
   upd="$sfresh"; [ "$cfresh" -gt "$upd" ] && upd="$cfresh"   # stamp with the source's age
   tmp=$(mktemp "$HOME/.claude/.usage-cache.XXXXXX" 2>/dev/null) && {
     printf '{"five_hour":%s,"seven_day":%s,"updated_at":%s}\n' "$fh" "$sd" "$upd" > "$tmp" 2>/dev/null \
       && mv -f "$tmp" "$CACHE" 2>/dev/null || rm -f "$tmp" 2>/dev/null
   }
 fi
+
+# A window that just rolled over leaves nothing to show: its cached entry is
+# expired, and many payloads carry no rate_limits for it at all (a sizeable
+# share omit five_hour entirely), so the segment would vanish until some
+# session happens to receive a response carrying the successor. Usage right
+# after a reset is 0, which is worth showing - but the new window's end is a
+# server-side fact we do not have yet, so display the level alone and leave the
+# reset time and pace off until a payload reports them. Persistence above is
+# deliberately untouched: 0% with no boundary is nothing to hand other sessions.
+[ -z "$five" ] && [ -n "$frolled" ] && five=0
+[ -z "$week" ] && [ -n "$wrolled" ] && week=0
 
 # pace_badge <pace> <used%> -> " <colored OK|WARN|CRIT>".
 # Severity is the WORSE of two signals: the pace trajectory (burning faster
