@@ -49,6 +49,19 @@ sfresh=$(stat -c %Y "$transcript" 2>/dev/null)
 cfresh=$(printf '%s' "$cache" | jq -r '.updated_at // 0' 2>/dev/null)
 case "$cfresh" in ''|*[!0-9]*) cfresh=0 ;; esac
 
+# rate_limits only refresh when an API response arrives, so a session that has
+# been sitting idle keeps serving whatever it was told hours ago. Measured: a
+# session mid-turn writes its transcript every 1-348s, while idle ones ranged
+# from 497s to 15h - and every idle payload carried a seven_day figure an
+# entire window out of date. Freshness alone does not catch them: cfresh only
+# advances when some session writes, so once the active sessions are closed it
+# freezes and the next idle session wins the comparison and overwrites the
+# cache with its stale numbers. Cap what counts as live. Demoting a live
+# payload is harmless (the cache it falls back to is at least as fresh);
+# trusting a stale one corrupts every session, so err toward demoting.
+STALE_AFTER=300
+slive=1; [ "$((now - sfresh))" -gt "$STALE_AFTER" ] && slive=0
+
 merge_window() {          # $1=key -> sets M_USED, M_RESET, M_ROLLED (may be empty)
   local key="$1" su sr cu cr
   su=$(printf '%s' "$input" | jq -r ".rate_limits.$key.used_percentage // empty" 2>/dev/null)
@@ -66,7 +79,7 @@ merge_window() {          # $1=key -> sets M_USED, M_RESET, M_ROLLED (may be emp
   [ -n "$cr" ] && [ "$cr" -le "$now" ] && { cu=""; cr=""; M_ROLLED=1; }
   M_USED=""; M_RESET=""
   if [ -n "$sr" ] && [ -n "$cr" ]; then
-    if [ "$sfresh" -ge "$cfresh" ]; then M_USED="$su"; M_RESET="$sr"   # ties: prefer live
+    if [ "$slive" = 1 ] && [ "$sfresh" -ge "$cfresh" ]; then M_USED="$su"; M_RESET="$sr"   # ties: prefer live
     else M_USED="$cu"; M_RESET="$cr"; fi
   elif [ -n "$sr" ]; then M_USED="$su"; M_RESET="$sr"
   elif [ -n "$cr" ]; then M_USED="$cu"; M_RESET="$cr"
@@ -81,7 +94,10 @@ if [ -n "$freset$wreset" ]; then
   fh=null; sd=null
   [ -n "$freset" ] && fh=$(printf '{"used_percentage":%s,"resets_at":%s}' "$five" "$freset")
   [ -n "$wreset" ] && sd=$(printf '{"used_percentage":%s,"resets_at":%s}' "$week" "$wreset")
-  upd="$sfresh"; [ "$cfresh" -gt "$upd" ] && upd="$cfresh"   # stamp with the source's age
+  # Stamp with the age of the source actually used. Starting from cfresh keeps
+  # an idle session from advertising its stale payload as fresh: it would then
+  # outrank the very cache entry it just copied.
+  upd="$cfresh"; [ "$slive" = 1 ] && [ "$sfresh" -gt "$upd" ] && upd="$sfresh"
   tmp=$(mktemp "$HOME/.claude/.usage-cache.XXXXXX" 2>/dev/null) && {
     printf '{"five_hour":%s,"seven_day":%s,"updated_at":%s}\n' "$fh" "$sd" "$upd" > "$tmp" 2>/dev/null \
       && mv -f "$tmp" "$CACHE" 2>/dev/null || rm -f "$tmp" 2>/dev/null
