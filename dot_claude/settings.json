@@ -8,6 +8,12 @@
             "command": "jq -r '.message // \"\"' | { read -r m; case \"$m\" in *\"waiting for your input\"*) exit 0 ;; esac; zsh -c 'source ~/.config/zsh/win-notify.sh; win-notify \"Input needed.\" \"Claude\"' ; [ -n \"$TMUX_PANE\" ] && printf '\\a' > \"$(tmux display-message -p -t \"$TMUX_PANE\" '#{pane_tty}')\" ; } 2>/dev/null",
             "statusMessage": "Notifying Windows",
             "type": "command"
+          },
+          {
+            "async": true,
+            "command": "sh \"$HOME/.claude/hooks/herdr-pane-name.sh\"",
+            "statusMessage": "herdr: sync pane name",
+            "type": "command"
           }
         ]
       }
@@ -18,6 +24,12 @@
           {
             "command": "bash \"$HOME/.claude/hooks/herdr-agent-state.sh\" session",
             "timeout": 10,
+            "type": "command"
+          },
+          {
+            "async": true,
+            "command": "sh \"$HOME/.claude/hooks/herdr-pane-name.sh\"",
+            "statusMessage": "herdr: sync pane name",
             "type": "command"
           }
         ],
@@ -38,6 +50,12 @@
             "command": "zsh -c 'source ~/.config/zsh/win-notify.sh; win-notify \"Task complete.\" \"Claude\"' 2>/dev/null",
             "statusMessage": "Notifying Windows",
             "type": "command"
+          },
+          {
+            "async": true,
+            "command": "sh \"$HOME/.claude/hooks/herdr-pane-name.sh\"",
+            "statusMessage": "herdr: sync pane name",
+            "type": "command"
           }
         ]
       }
@@ -49,6 +67,12 @@
             "async": true,
             "command": "[ -n \"$TMUX_PANE\" ] && { tmux set-option -w -t \"$TMUX_PANE\" window-status-style 'bg=yellow,fg=black'; tmux set-option -w -t \"$TMUX_PANE\" @busy 1; tmux set-option -uw -t \"$TMUX_PANE\" @claude_done; } 2>/dev/null",
             "statusMessage": "tmux: mark window running",
+            "type": "command"
+          },
+          {
+            "async": true,
+            "command": "sh \"$HOME/.claude/hooks/herdr-pane-name.sh\"",
+            "statusMessage": "herdr: sync pane name",
             "type": "command"
           }
         ]
