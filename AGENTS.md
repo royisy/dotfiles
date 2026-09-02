@@ -10,6 +10,7 @@ This repository is public. Absolute paths that carry the user's home directory o
 
 - Write `$HOME` or `~` instead. In JSON, `"sh \"$HOME/.claude/hooks/foo.sh\""` expands; `'$HOME/...'` inside single quotes does not.
 - Some tools write absolute paths into managed files on their own (the Herdr integration does this to `~/.claude/settings.json`). Re-check such files whenever they are re-added with `chezmoi add`, not just when editing them by hand.
+- When a managed file genuinely needs an absolute path, make it a chezmoi template (`*.tmpl`) and write `{{ .chezmoi.homeDir }}`. Build the template by hand: `chezmoi add --autotemplate` over-substitutes badly here, replacing every `:` and `/` in the file and resolving the home path to the unstable `{{ .chezmoi.commandDir }}`.
 - Before committing, grep the staged diff and fix every hit:
 
   ```sh
