@@ -18,10 +18,12 @@ set -uo pipefail
 HERDR=${HERDR_BIN:-$HOME/.local/bin/herdr}
 INTERVAL=${HERDR_TAB_STATUS_INTERVAL:-3}
 # Indicator styles:
-#   faces   - people emoji: hand up / running / OK gesture. Two of these are
-#             ZWJ sequences, so the strip pattern matches them as whole
-#             alternatives rather than through the character class, which
-#             can only ever consume one codepoint at a time.
+#   faces   - people emoji: hand up / at the keyboard / OK gesture. Two of
+#             these are ZWJ sequences, so the strip pattern matches them as
+#             whole alternatives rather than through the character class,
+#             which can only ever consume one codepoint at a time. The
+#             runner the working glyph used to be stays in that pattern, so
+#             a label still carrying one strips cleanly.
 #   marks   - emoji whose SHAPE carries the meaning (stop / hourglass / check),
 #             so the state reads without decoding a colour.
 #   color   - colour-coded circles; meaning carried by hue alone.
@@ -88,7 +90,7 @@ plan() {
     def glyph:
       if $style == "faces" then
         if   . == "blocked" then "\ud83d\ude4b"
-        elif . == "working" then "🏃‍♀️‍➡️"
+        elif . == "working" then "👩‍💻"
         elif . == "done"    then "🙆‍♂️"
         else "" end                      # idle: unmarked, it is the resting state
       elif $style == "marks" then
@@ -118,7 +120,7 @@ plan() {
     (.result.tabs // [])[]
     | select($only == "" or .tab_id == $only)
     | (.label // "") as $cur
-    | ($cur | sub("^(?:\\[[0-9;]*m|🏃‍♀️‍➡️|🏃‍♂️‍➡️|🙆‍♂️|[●⏳✓・!*+.\ud83d\udd34\ud83d\udfe1\ud83d\udfe2\u26aa\u2757\u2705\ud83d\ude21\ud83d\ude30\ud83d\ude0e\ud83d\ude4b]|[[:space:]])+"; "")) as $base
+    | ($cur | sub("^(?:\\[[0-9;]*m|👩‍💻|🏃‍♀️‍➡️|🏃‍♂️‍➡️|🙆‍♂️|[●⏳✓・!*+.\ud83d\udd34\ud83d\udfe1\ud83d\udfe2\u26aa\u2757\u2705\ud83d\ude21\ud83d\ude30\ud83d\ude0e\ud83d\ude4b]|[[:space:]])+"; "")) as $base
     | (if $strip == 1 then "" else ((.agent_status // "") | glyph) end) as $g
     | select($base != "")
     | (if $g == "" then $base else $g + sep + $base end) as $want
