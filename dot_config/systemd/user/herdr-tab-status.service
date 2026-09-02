@@ -1,0 +1,14 @@
+[Unit]
+Description=Mirror Herdr agent status into tab labels
+
+[Service]
+Type=simple
+ExecStart=%h/.config/herdr/tab-status.sh
+# The Herdr server outliving or restarting under this loop is normal, and the
+# loop already tolerates a failed pass, so a restart here only covers the loop
+# itself dying.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
