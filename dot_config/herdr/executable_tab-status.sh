@@ -18,6 +18,9 @@ set -uo pipefail
 HERDR=${HERDR_BIN:-$HOME/.local/bin/herdr}
 INTERVAL=${HERDR_TAB_STATUS_INTERVAL:-3}
 # Indicator styles:
+#   faces   - people emoji: hand up / running / shades. The running one is
+#             a seven-codepoint ZWJ sequence, so the strip pattern matches it
+#             as a whole alternative rather than through the character class.
 #   marks   - emoji whose SHAPE carries the meaning (stop / hourglass / check),
 #             so the state reads without decoding a colour.
 #   color   - colour-coded circles; meaning carried by hue alone.
@@ -37,15 +40,15 @@ INTERVAL=${HERDR_TAB_STATUS_INTERVAL:-3}
 # per-state hook. So the colour has to live in the character, which means
 # emoji presentation, which is always two cells wide. Colour and narrowness
 # cannot both be had; compact trades the colour away for one cell.
-STYLE=${HERDR_TAB_STATUS_STYLE:-marks}
+STYLE=${HERDR_TAB_STATUS_STYLE:-faces}
 
 usage() {
   cat <<'EOF'
-Usage: tab-status.sh [--once] [--dry-run] [--style marks|color|compact|symbols] [--tab ID]
+Usage: tab-status.sh [--once] [--dry-run] [--style faces|marks|color|compact|symbols] [--tab ID]
 
   --once            Run a single pass instead of looping.
   --dry-run         Print the renames that would happen; change nothing.
-  --style STYLE     Indicator style (default: marks, or $HERDR_TAB_STATUS_STYLE).
+  --style STYLE     Indicator style (default: faces, or $HERDR_TAB_STATUS_STYLE).
   --tab ID          Restrict the pass to one tab, for trying a style out.
   --strip           Remove all indicators and restore plain labels.
 EOF
@@ -65,7 +68,7 @@ while [ $# -gt 0 ]; do
   shift
 done
 
-case "$STYLE" in marks|color|compact|symbols) ;; *) echo "unknown style: $STYLE" >&2; exit 2 ;; esac
+case "$STYLE" in faces|marks|color|compact|symbols) ;; *) echo "unknown style: $STYLE" >&2; exit 2 ;; esac
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
 [ -x "$HERDR" ] || { echo "herdr not found at $HERDR" >&2; exit 1; }
 
@@ -82,7 +85,12 @@ plan() {
   "$HERDR" tab list 2>/dev/null | jq -r \
     --arg style "$STYLE" --arg only "$only_tab" --argjson strip "$strip_only" '
     def glyph:
-      if $style == "marks" then
+      if $style == "faces" then
+        if   . == "blocked" then "\ud83d\ude4b"
+        elif . == "working" then "🏃‍♂️‍➡️"
+        elif . == "done"    then "\ud83d\ude0e"
+        else "" end                      # idle: unmarked, it is the resting state
+      elif $style == "marks" then
         if   . == "blocked" then "\u2757"
         elif . == "working" then "\u23f3"
         elif . == "done"    then "\u2705"
@@ -109,7 +117,7 @@ plan() {
     (.result.tabs // [])[]
     | select($only == "" or .tab_id == $only)
     | (.label // "") as $cur
-    | ($cur | sub("^(?:\\[[0-9;]*m|[●⏳✓・!*+.\ud83d\udd34\ud83d\udfe1\ud83d\udfe2\u26aa\u2757\u2705]|[[:space:]])+"; "")) as $base
+    | ($cur | sub("^(?:\\[[0-9;]*m|🏃‍♂️‍➡️|[●⏳✓・!*+.\ud83d\udd34\ud83d\udfe1\ud83d\udfe2\u26aa\u2757\u2705\ud83d\ude21\ud83d\ude30\ud83d\ude0e\ud83d\ude4b]|[[:space:]])+"; "")) as $base
     | (if $strip == 1 then "" else ((.agent_status // "") | glyph) end) as $g
     | select($base != "")
     | (if $g == "" then $base else $g + sep + $base end) as $want
