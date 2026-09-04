@@ -57,7 +57,6 @@ now=$(date +%s)
 # looking idle and the stale cache won. That is how 5h read 55% while the
 # account was in fact rate-limited at 100%, and 7d read 30% against a true 10%.
 CACHE="$HOME/.claude/statusline-usage-cache.json"
-CACHE_TTL=900                     # a cached snapshot older than this is ignored
 cache=$(cat "$CACHE" 2>/dev/null)
 
 # read4 <json> <jq-prefix> -> R1..R4: 5h used, 5h reset, 7d used, 7d reset
@@ -82,17 +81,13 @@ c_seen="${c_seen%.*}"; case "$c_seen" in ''|*[!0-9]*) c_seen=0 ;; esac
 [ -z "$c_fu" ] && c_fr=""; [ -z "$c_fr" ] && c_fu=""
 [ -z "$c_wu" ] && c_wr=""; [ -z "$c_wr" ] && c_wu=""
 
-# An expired window is over, not stale: drop it and remember the rollover.
-frolled=""; wrolled=""
-[ -n "$s_fr" ] && [ "$s_fr" -le "$now" ] && { s_fu=""; s_fr=""; frolled=1; }
-[ -n "$c_fr" ] && [ "$c_fr" -le "$now" ] && { c_fu=""; c_fr=""; frolled=1; }
+# An expired window is over, not stale: drop it. Only the 7d rollover is worth
+# remembering - an absent 5h window is displayed as 0 either way.
+wrolled=""
+[ -n "$s_fr" ] && [ "$s_fr" -le "$now" ] && { s_fu=""; s_fr=""; }
+[ -n "$c_fr" ] && [ "$c_fr" -le "$now" ] && { c_fu=""; c_fr=""; }
 [ -n "$s_wr" ] && [ "$s_wr" -le "$now" ] && { s_wu=""; s_wr=""; wrolled=1; }
 [ -n "$c_wr" ] && [ "$c_wr" -le "$now" ] && { c_wu=""; c_wr=""; wrolled=1; }
-
-# An aged-out cache entry goes as a whole: nothing in it can be trusted to
-# still describe the account, and its seven_day has had time to decay away
-# from what it claims.
-[ "$((now - c_seen))" -gt "$CACHE_TTL" ] && { c_fu=""; c_fr=""; c_wu=""; c_wr=""; }
 
 # Rank by the five_hour clock: a live 5h window beats an expired or absent one,
 # a later window beats an earlier one, and inside one window more usage means a
@@ -102,6 +97,14 @@ if [ -n "$c_fr" ]; then
   if [ -z "$s_fr" ] || [ "$c_fr" -gt "$s_fr" ]; then winner=cache
   elif [ "$c_fr" -eq "$s_fr" ] && awk -v a="$c_fu" -v b="$s_fu" 'BEGIN{exit !(a>b)}'; then winner=cache
   fi
+elif [ -z "$s_fr" ] && [ -n "$c_wr" ]; then
+  # Neither side can be dated - between 5h windows nobody holds one. The cache
+  # is then the better guess: it is the last thing ANY session on this machine
+  # observed, while an idle process is a lottery (measured during one gap:
+  # sixteen idle sessions offering 4/11/18/19/21/23/28/29/30/32/34/37/39% for
+  # the same 7d window). It cannot get stuck there - the next session to hold a
+  # live 5h window outranks it and overwrites it.
+  winner=cache
 fi
 
 if [ "$winner" = cache ]; then
@@ -113,9 +116,11 @@ else
 fi
 
 # Persist the snapshot for sessions whose process holds no rate_limits yet.
-# seen_at is the age of the READING, not of this write, so a cached snapshot
-# that keeps winning still ages out on schedule instead of being renewed
-# forever by every session that copies it.
+# Nothing ages it out on a clock: an entry leaves only when its own window
+# expires, or when a session holding a live 5h window replaces it. seen_at
+# records the age of the READING rather than of this write, so it stays
+# honest about what is being served while it is copied from session to
+# session.
 if [ -n "$freset$wreset" ]; then
   fh=null; sd=null
   [ -n "$freset" ] && fh=$(printf '{"used_percentage":%s,"resets_at":%s}' "$five" "$freset")
@@ -126,15 +131,20 @@ if [ -n "$freset$wreset" ]; then
   }
 fi
 
-# A window that just rolled over leaves nothing to show: its cached entry is
-# expired, and many payloads carry no rate_limits for it at all (a sizeable
-# share omit five_hour entirely), so the segment would vanish until some
-# session happens to receive a response carrying the successor. Usage right
-# after a reset is 0, which is worth showing - but the new window's end is a
-# server-side fact we do not have yet, so display the level alone and leave the
-# reset time and pace off until a payload reports them. Persistence above is
-# deliberately untouched: 0% with no boundary is nothing to hand other sessions.
-[ -z "$five" ] && [ -n "$frolled" ] && five=0
+# BETWEEN 5h windows there is nothing to report: a payload drops five_hour
+# once its window has passed, so the whole machine can be without one at the
+# same time and the segment would vanish - taking the row's shape with it -
+# for as long as the gap lasts, which is however long the machine is left
+# alone. Between windows the usage IS 0, the next window not having started,
+# so show the level; the new window's end is a server-side fact we do not have
+# yet, so leave the reset time and the pace off until a payload reports them.
+#
+# seven_day gets no such treatment. Its window is a week long and is running
+# essentially always, so an absent seven_day means "never heard", not "zero" -
+# unless we watched the window expire, which is the one case where 0 is a fact.
+# Persistence above is deliberately untouched: a level with no boundary is
+# nothing to hand other sessions.
+[ -z "$five" ] && five=0
 [ -z "$week" ] && [ -n "$wrolled" ] && week=0
 
 # pace_badge <pace> <used%> -> " <colored OK|WARN|CRIT>".
