@@ -12,6 +12,19 @@ focus_pane_right = ["prefix+l", "alt+l"]
 next_tab = ["prefix+n", "shift+right"]
 previous_tab = ["prefix+p", "shift+left"]
 
+# Jump to the agent that needs you. `herdr agent list` reports agent_status for
+# every pane, so these pick the first pane in each state and focus it - the
+# same signal the tab labels carry, reachable without scanning the tab row.
+[[keys.command]]
+key = "prefix+ctrl+b"                                     # b for blocked
+type = "shell"
+command = "target=$(herdr agent list | jq -r '.result.agents[] | select(.agent_status==\"blocked\") | .pane_id' | head -1); [ -n \"$target\" ] && herdr agent focus \"$target\""
+
+[[keys.command]]
+key = "prefix+ctrl+d"                                     # d for done
+type = "shell"
+command = "target=$(herdr agent list | jq -r '.result.agents[] | select(.agent_status==\"done\") | .pane_id' | head -1); [ -n \"$target\" ] && herdr agent focus \"$target\""
+
 # Notify (and play a sound) when an agent finishes or needs input.
 # delivery defaults to "off"; "herdr" shows an in-UI toast (reliable on WSL2).
 [ui.toast]
