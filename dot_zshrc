@@ -11,6 +11,15 @@ if [ -f "$HOME/.config/zsh/win-notify.sh" ]; then
     source "$HOME/.config/zsh/win-notify.sh"
 fi
 
+# Keep the Herdr tab indicators running. This belongs in a systemd --user unit
+# and used to be one, but the host security agent holds the cgroup root here,
+# so user@.service fails at boot and takes every --user unit with it. The shell
+# is what is left. --ensure returns immediately and starts nothing when a loop
+# is already up, so the cost per shell is one short-lived process.
+if [ -x "$HOME/.config/herdr/tab-status.sh" ]; then
+    "$HOME/.config/herdr/tab-status.sh" --ensure
+fi
+
 if command -v zoxide >/dev/null 2>&1; then
     eval "$(zoxide init zsh)"
 fi
