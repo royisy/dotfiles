@@ -12,6 +12,12 @@ focus_pane_right = ["prefix+l", "alt+l"]
 next_tab = ["prefix+n", "shift+right"]
 previous_tab = ["prefix+p", "shift+left"]
 
+# Open every new tab already split left/right. Herdr 0.9 has no layout option
+# for new tabs - `new_tab` is a plain keybinding and `tab create` takes no
+# layout - so the built-in binding is disabled and prefix+c runs the
+# create-then-split pair below.
+new_tab = ""
+
 # Jump to the agent that needs you. `herdr agent list` reports agent_status for
 # every pane, so these pick the first pane in each state and focus it - the
 # same signal the tab labels carry, reachable without scanning the tab row.
@@ -24,6 +30,15 @@ command = "target=$(herdr agent list | jq -r '.result.agents[] | select(.agent_s
 key = "prefix+ctrl+d"                                     # d for done
 type = "shell"
 command = "target=$(herdr agent list | jq -r '.result.agents[] | select(.agent_status==\"done\") | .pane_id' | head -1); [ -n \"$target\" ] && herdr agent focus \"$target\""
+
+# Stands in for the built-in new_tab (disabled above): create the tab, then
+# split its root pane to the right, leaving focus in the left pane.
+# A custom command cannot open Herdr's own modal, so this skips the
+# prompt_new_tab_name naming prompt and takes the generated tab name.
+[[keys.command]]
+key = "prefix+c"
+type = "shell"
+command = "pane=$(herdr tab create --focus | jq -r '.result.root_pane.pane_id'); herdr pane split \"$pane\" --direction right --no-focus"
 
 # Notify (and play a sound) when an agent finishes or needs input.
 # delivery defaults to "off"; "herdr" shows an in-UI toast (reliable on WSL2).
