@@ -1,6 +1,6 @@
-[user]
-	name = royisy
-	email = 28505196+royisy@users.noreply.github.com
+# user.name / user.email are intentionally NOT set here.
+# This repository is public, so the Git identity is kept machine-local in
+# ~/.gitconfig.local (see the [include] at the bottom of this file).
 [pager]
 	branch = false
 [core]
