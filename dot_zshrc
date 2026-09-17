@@ -20,6 +20,11 @@ if [ -x "$HOME/.config/herdr/tab-status.sh" ]; then
     "$HOME/.config/herdr/tab-status.sh" --ensure
 fi
 
+# Mark the current Herdr tab as parked for a while; run again to unmark.
+if [ -x "$HOME/.config/herdr/freeze.sh" ]; then
+    alias freeze="$HOME/.config/herdr/freeze.sh"
+fi
+
 if command -v zoxide >/dev/null 2>&1; then
     eval "$(zoxide init zsh)"
 fi
