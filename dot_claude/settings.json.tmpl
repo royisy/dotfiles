@@ -1,7 +1,6 @@
 {
   "permissions": {
     "allow": [
-      "Bash(win-notify:*)",
       "Bash(grep:*)",
       "Bash(ruff format:*)",
       "Bash(ruff check:*)"
@@ -13,8 +12,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "jq -r '.message // \"\"' | { read -r m; case \"$m\" in *\"waiting for your input\"*) exit 0 ;; esac; zsh -c 'source ~/.config/zsh/win-notify.sh; win-notify \"Input needed.\" \"Claude\"' ; [ -n \"$TMUX_PANE\" ] && printf '\\a' > \"$(tmux display-message -p -t \"$TMUX_PANE\" '#{pane_tty}')\" ; } 2>/dev/null",
-            "statusMessage": "Notifying Windows",
+            "command": "jq -r '.message // \"\"' | { read -r m; case \"$m\" in *\"waiting for your input\"*) exit 0 ;; esac; [ -n \"$TMUX_PANE\" ] && printf '\\a' > \"$(tmux display-message -p -t \"$TMUX_PANE\" '#{pane_tty}')\" ; } 2>/dev/null",
+            "statusMessage": "tmux: bell on notification",
             "async": true
           },
           {
@@ -51,12 +50,6 @@
             "type": "command",
             "command": "[ -n \"$TMUX_PANE\" ] && { if [ \"$(tmux display-message -p -t \"$TMUX_PANE\" '#{window_active}')\" = 1 ]; then tmux set-option -uw -t \"$TMUX_PANE\" window-status-style; tmux set-option -uw -t \"$TMUX_PANE\" @busy; tmux set-option -uw -t \"$TMUX_PANE\" @claude_done; else tmux set-option -w -t \"$TMUX_PANE\" window-status-style 'bg=blue,fg=white'; tmux set-option -w -t \"$TMUX_PANE\" @busy 1; tmux set-option -w -t \"$TMUX_PANE\" @claude_done 1; fi; } 2>/dev/null",
             "statusMessage": "tmux: mark window done",
-            "async": true
-          },
-          {
-            "type": "command",
-            "command": "zsh -c 'source ~/.config/zsh/win-notify.sh; win-notify \"Task complete.\" \"Claude\"' 2>/dev/null",
-            "statusMessage": "Notifying Windows",
             "async": true
           },
           {
