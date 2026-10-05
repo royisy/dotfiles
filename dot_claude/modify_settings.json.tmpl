@@ -1,4 +1,38 @@
+#!/bin/sh
+# chezmoi modify_ script for ~/.claude/settings.json.
+#
+# Claude Code writes this file itself - `/plugin` stores enabledPlugins and
+# extraKnownMarketplaces here, and `/config` and `/model` save user-level
+# options the same way. Its own docs warn what happens when something else
+# owns the file: "If you can't write to that file, for example because another
+# tool generates it [...] the change applies to the current session and is gone
+# in the next one." A plain managed file did exactly that - a bare
+# `chezmoi apply` dropped FORCE_HYPERLINK and an installed plugin - and one of
+# those plugins names a work repository, so it can never live in this public
+# repo anyway.
+#
+# So chezmoi no longer writes the whole file. It receives the current contents
+# on stdin and writes back the merge:
+#
+#   - the keys below are chezmoi's and replace whatever the file has, whole,
+#     so dropping a hook here really drops it;
+#   - enabledPlugins and extraKnownMarketplaces are Claude Code's. The values
+#     below only seed a fresh machine; whatever the file already says wins, so
+#     a plugin toggled with `/plugin` keeps its state and work-specific entries
+#     stay on this machine;
+#   - every other key Claude Code writes (theme, model, ...) is passed through
+#     untouched.
+#
+# Never run `chezmoi add ~/.claude/settings.json`: it would replace this script
+# with a snapshot of the live file, work-specific plugin entries included.
+
+set -eu
+
+managed=$(cat <<'CHEZMOI_MANAGED_JSON'
 {
+  "env": {
+    "FORCE_HYPERLINK": "1"
+  },
   "permissions": {
     "allow": [
       "Bash(grep:*)",
@@ -128,3 +162,25 @@
     ]
   }
 }
+CHEZMOI_MANAGED_JSON
+)
+
+current=$(cat)
+
+# No jq: hand back whatever is there rather than truncate it, and fall back to
+# the managed keys alone when the file does not exist yet.
+if ! command -v jq >/dev/null 2>&1; then
+  if [ -n "$current" ]; then printf '%s' "$current"; else printf '%s\n' "$managed"; fi
+  exit 0
+fi
+
+[ -n "$current" ] || current='{}'
+
+# A file jq cannot parse is left exactly as it is - better a stale file than a
+# truncated one.
+printf '%s' "$current" | jq --argjson m "$managed" '
+  . as $cur
+  | ($cur + $m)
+  | .enabledPlugins          = (($m.enabledPlugins          // {}) + ($cur.enabledPlugins          // {}))
+  | .extraKnownMarketplaces  = (($m.extraKnownMarketplaces  // {}) + ($cur.extraKnownMarketplaces  // {}))
+' || printf '%s' "$current"

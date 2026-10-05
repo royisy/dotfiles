@@ -16,3 +16,20 @@ This repository is public. Absolute paths that carry the user's home directory o
   ```sh
   git diff --cached | grep -nE '/home/|/Users/|C:\\Users' && echo 'machine-specific path in staged diff'
   ```
+
+## Config the app writes: never `chezmoi add` it
+
+`~/.claude/settings.json` and `~/.codex/config.toml` are written by the tools
+themselves — plugin installs, `/config`, `/model`, NUX counters — so this repo
+cannot own them whole. Both are managed as chezmoi `modify_` scripts that
+receive the live file, assert only the keys this repo owns, and pass everything
+else through. Claude Code's own docs spell out the failure mode for a file
+another tool generates: the change "applies to the current session and is gone
+in the next one".
+
+- Edit the `modify_` script. `chezmoi add` on either path replaces it with a
+  snapshot of the live file, which loses the merge and can drag work-specific
+  entries (plugins, MCP servers) into this public repo.
+- `chezmoi apply` with no arguments touches every managed file, so check
+  `chezmoi status` first — the two files above drift by design, and a file not
+  yet converted to `modify_` would be overwritten.
