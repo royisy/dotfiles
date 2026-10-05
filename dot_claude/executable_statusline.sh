@@ -149,15 +149,23 @@ fi
 
 # pace_badge <pace> <used%> -> " <colored OK|WARN|CRIT>".
 # Severity is the WORSE of two signals: the pace trajectory (burning faster
-# than the window can sustain) and the absolute usage level (how close to the
-# ceiling). So hitting ~100% always reads CRIT even when perfectly paced.
+# than the window can sustain) and having actually run out.
 # OK=success, WARN=warning, CRIT=error - Claude Code's own semantic colours,
 # reached through heat() at the ramp stops that carry them.
+#
+# The level signal used to be a flat (u>=95)?CRIT:(u>=85)?WARN floor, to keep a
+# near-full window from reading OK on good pacing. It cannot see the clock, so
+# it fired at the END of a window too, where being near the ceiling costs
+# nothing because the reset arrives first: 89% with five minutes left read WARN
+# while the pace was 0.91. The time axis is already in the pace (expected usage
+# grows with the elapsed window), so the floor was redundant everywhere except
+# at exhaustion - 95% mid-window is pace 1.9 = CRIT on its own. What pace cannot
+# express is being blocked right now, so that is all the level signal says now.
 pace_badge() {
   local pace="$1" used="$2" ps=0 ls=0 sev lab hv
   [ -n "$pace" ] && ps=$(awk -v p="$pace" 'BEGIN{print (p>=1.5)?2:(p>=1.1)?1:0}')
-  [ -n "$used" ] && ls=$(awk -v u="$used" 'BEGIN{print (u>=95)?2:(u>=85)?1:0}')
-  # Nothing to show: no pace signal (too early) and usage not elevated.
+  [ -n "$used" ] && ls=$(awk -v u="$used" 'BEGIN{print (u>=99)?2:0}')
+  # Nothing to show: no pace signal (too early) and not out of budget.
   [ -z "$pace" ] && [ "$ls" -eq 0 ] && return
   sev=$ps; [ "$ls" -gt "$sev" ] && sev=$ls
   case "$sev" in
