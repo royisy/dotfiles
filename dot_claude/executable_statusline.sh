@@ -279,8 +279,14 @@ fi
 
 # 7-day window: usage% + reset date + pace badge.
 # Budget is meant to last 5 working days (Mon-Fri); any 7-day window contains
-# exactly 5 weekdays. Expected usage = elapsed working days / 5. Weekends do
-# not add to the expected burn, so 1 working day used should sit near 20%.
+# exactly 5 weekdays. Expected usage = working days begun / 5: a weekday counts
+# whole from its first minute, so on day one anything up to 20% is on pace,
+# whatever the hour. Weekends do not add to the expected burn.
+#
+# This used to count weekday SECONDS, as if a day's share were spent evenly over
+# its 24 hours: 8% at 18:46 on the window's first day read WARN (0.37 days in,
+# 7.3% "expected"), though a working day is not 24 hours long and when it starts
+# varies - the same reason today's share has no pace of its own.
 if [ -n "$week" ]; then
   p=$(printf '%.0f' "$week")
   seg="week $(heat "$p")${p}%${reset_c}"
@@ -290,24 +296,16 @@ if [ -n "$week" ]; then
   fi
   pace=""
   if [ -n "$wreset" ]; then
-    ws=$(( wreset - 604800 ))                 # window start = reset - 7 days
-    # Sum weekday seconds inside [ws, now], counting each CALENDAR day by its
-    # own weekday (aligned to local midnight, not the window's start time).
-    work=0
-    cur=$(date -d "$(date -d "@$ws" +%Y-%m-%d) 00:00:00" +%s 2>/dev/null)
-    while [ -n "$cur" ] && [ "$cur" -lt "$now" ]; do
-      nxt=$(( cur + 86400 ))
-      s=$cur; [ "$ws"  -gt "$s" ] && s=$ws     # clip to window start
-      e=$nxt; [ "$now" -lt "$e" ] && e=$now    # clip to now
-      if [ "$e" -gt "$s" ] && [ "$(date -d "@$cur" +%u 2>/dev/null)" -le 5 ]; then
-        work=$(( work + e - s ))
-      fi
-      cur=$nxt
+    # Weekdays begun inside the window, counting each CALENDAR day from the
+    # window's start (reset - 7 days) through today by its own weekday.
+    wd=0; d=$(date -d "@$(( wreset - 604800 ))" +%F 2>/dev/null)
+    while [ -n "$d" ] && ! [[ "$d" > "$today" ]]; do
+      [ "$(date -d "$d" +%u)" -le 5 ] && wd=$(( wd + 1 ))
+      d=$(date -d "$d +1 day" +%F)
     done
-    pace=$(awk -v u="$week" -v work="$work" 'BEGIN{
-      wd=work/86400; if(wd<0.1)exit;          # working days elapsed; skip if <~2.4h
-      e=wd/5*100; if(e<=0)exit;               # expected % (5 working days = 100%)
-      printf "%.2f", u/e }')
+    pace=$(awk -v u="$week" -v wd="$wd" 'BEGIN{
+      if(wd<1)exit; if(wd>5)wd=5;             # the reset morning makes a 6th
+      printf "%.2f", u/(wd/5*100) }')
   fi
   seg="$seg$(pace_badge "$pace" "$week")"
   append "$seg"
