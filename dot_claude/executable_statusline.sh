@@ -30,7 +30,7 @@ heat() {
 
 now=$(date +%s)
 
-# Plan usage (Pro/Max): rate_limits are built from the rate-limit headers of
+# Plan usage (Pro/Max/Ultra): rate_limits are built from the rate-limit headers of
 # the last API response THIS CLI process saw and are held in memory per
 # process, so an idle session serves an old snapshot and a process that has
 # been told nothing at all carries no rate_limits. Usage is per-account, so
@@ -59,6 +59,17 @@ now=$(date +%s)
 CACHE="$HOME/.claude/statusline-usage-cache.json"
 cache=$(cat "$CACHE" 2>/dev/null)
 
+# Usage is per account, so is the cache: after switching accounts, the old
+# account's live 5h window outranked every reading of the new one until it ran
+# out. A cache written for another account (or before this field existed) is
+# not ours to serve.
+acct=$(jq -r '.oauthAccount.accountUuid // empty' "$HOME/.claude.json" 2>/dev/null)
+{ read -r c_acct; read -r acct_since; } <<EOF
+$(printf '%s' "$cache" | jq -r '.account, .account_since | if . == null then "" else tostring end' 2>/dev/null)
+EOF
+[ "$c_acct" = "$acct" ] || { cache=""; acct_since=""; }
+[ -n "$acct_since" ] || acct_since=$now
+
 # read4 <json> <jq-prefix> -> R1..R4: 5h used, 5h reset, 7d used, 7d reset
 # ("" for anything absent). One jq per source instead of one per field.
 read4() {
@@ -69,9 +80,23 @@ EOF
 }
 
 read4 "$input" '(.rate_limits // {})'; s_fu="$R1"; s_fr="${R2%.*}"; s_wu="$R3"; s_wr="${R4%.*}"
+# A session resumed from before the account switch serves the OLD account's
+# rate_limits, restored with its transcript, until it next talks to the API:
+# after one switch, three such sessions offered a 7d window that outlived the
+# new account's, which outranked it below. A transcript untouched since this
+# account was first seen cannot hold a reading of it.
+transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null)
+if [ -n "$transcript" ] && [ -f "$transcript" ] && [ "$(stat -c %Y "$transcript" 2>/dev/null || echo "$now")" -lt "$acct_since" ]; then
+  s_fu=""; s_fr=""; s_wu=""; s_wr=""
+fi
 read4 "$cache" '(. // {})';            c_fu="$R1"; c_fr="${R2%.*}"; c_wu="$R3"; c_wr="${R4%.*}"
-c_seen=$(printf '%s' "$cache" | jq -r '.seen_at // .updated_at // empty' 2>/dev/null)
+{ read -r c_seen; read -r c_day; read -r c_day_wr; read -r c_day_base; } <<EOF
+$(printf '%s' "$cache" | jq -r '(.seen_at // .updated_at), .day.date, .day.wreset, .day.base | if . == null then "" else tostring end' 2>/dev/null)
+EOF
 c_seen="${c_seen%.*}"; case "$c_seen" in ''|*[!0-9]*) c_seen=0 ;; esac
+# The last 7d reading, kept before the expiry check below can drop it: at the
+# first render of a day it is where the day starts from.
+prev_wu="$c_wu"; prev_wr="$c_wr"
 
 # A window needs BOTH numbers to be usable. A resets_at without a usage figure
 # would otherwise win the ranking below, hide the segment, and get persisted as
@@ -98,13 +123,20 @@ if [ -n "$c_fr" ]; then
   elif [ "$c_fr" -eq "$s_fr" ] && awk -v a="$c_fu" -v b="$s_fu" 'BEGIN{exit !(a>b)}'; then winner=cache
   fi
 elif [ -z "$s_fr" ] && [ -n "$c_wr" ]; then
-  # Neither side can be dated - between 5h windows nobody holds one. The cache
-  # is then the better guess: it is the last thing ANY session on this machine
-  # observed, while an idle process is a lottery (measured during one gap:
-  # sixteen idle sessions offering 4/11/18/19/21/23/28/29/30/32/34/37/39% for
-  # the same 7d window). It cannot get stuck there - the next session to hold a
-  # live 5h window outranks it and overwrites it.
-  winner=cache
+  # Neither side holds a live 5h window: between windows, or always on a plan
+  # without one (a verified Ultra account). seven_day is then the only clock,
+  # ranked the same way: a later window beats an earlier one and, inside one,
+  # the higher reading is the later. Its resets_at stays put for the whole week
+  # (one value from 11/16 to 11/19), so usage inside a window only grows.
+  #
+  # This used to hand the win to the cache outright, as the last thing ANY
+  # session observed beats an idle process (measured during one gap: sixteen
+  # idle sessions offering 4-39% for the same 7d window). That relied on the
+  # next live 5h window to overwrite it - with no 5h window ever, 7d froze at
+  # the first reading.
+  if [ -z "$s_wr" ] || [ "$c_wr" -gt "$s_wr" ]; then winner=cache
+  elif [ "$c_wr" -eq "$s_wr" ] && awk -v a="$c_wu" -v b="$s_wu" 'BEGIN{exit !(a>b)}'; then winner=cache
+  fi
 fi
 
 if [ "$winner" = cache ]; then
@@ -115,6 +147,18 @@ else
   [ -z "$wreset" ] && { week="$c_wu"; wreset="$c_wr"; seen="$c_seen"; }
 fi
 
+# Where today started in the 7d window: the last reading from before local
+# midnight, carried in the cache across the day. 0 when the window rolled over
+# - overnight or during the day - since everything in the new window is today's.
+today=$(date +%F)
+day_base=""
+if [ -n "$wreset" ]; then
+  if [ "$c_day" = "$today" ] && [ "$c_day_wr" = "$wreset" ]; then day_base="$c_day_base"
+  elif [ "$c_day" != "$today" ] && [ "$prev_wr" = "$wreset" ]; then day_base="${prev_wu:-$week}"
+  else day_base=0
+  fi
+fi
+
 # Persist the snapshot for sessions whose process holds no rate_limits yet.
 # Nothing ages it out on a clock: an entry leaves only when its own window
 # expires, or when a session holding a live 5h window replaces it. seen_at
@@ -122,29 +166,24 @@ fi
 # honest about what is being served while it is copied from session to
 # session.
 if [ -n "$freset$wreset" ]; then
-  fh=null; sd=null
+  fh=null; sd=null; dy=null
   [ -n "$freset" ] && fh=$(printf '{"used_percentage":%s,"resets_at":%s}' "$five" "$freset")
   [ -n "$wreset" ] && sd=$(printf '{"used_percentage":%s,"resets_at":%s}' "$week" "$wreset")
+  [ -n "$day_base" ] && dy=$(printf '{"date":"%s","wreset":%s,"base":%s}' "$today" "$wreset" "$day_base")
   tmp=$(mktemp "$HOME/.claude/.usage-cache.XXXXXX" 2>/dev/null) && {
-    printf '{"five_hour":%s,"seven_day":%s,"seen_at":%s}\n' "$fh" "$sd" "$seen" > "$tmp" 2>/dev/null \
+    printf '{"account":"%s","account_since":%s,"five_hour":%s,"seven_day":%s,"day":%s,"seen_at":%s}\n' "$acct" "$acct_since" "$fh" "$sd" "$dy" "$seen" > "$tmp" 2>/dev/null \
       && mv -f "$tmp" "$CACHE" 2>/dev/null || rm -f "$tmp" 2>/dev/null
   }
 fi
 
-# BETWEEN 5h windows there is nothing to report: a payload drops five_hour
-# once its window has passed, so the whole machine can be without one at the
-# same time and the segment would vanish - taking the row's shape with it -
-# for as long as the gap lasts, which is however long the machine is left
-# alone. Between windows the usage IS 0, the next window not having started,
-# so show the level; the new window's end is a server-side fact we do not have
-# yet, so leave the reset time and the pace off until a payload reports them.
+# Without a live 5h window - between windows, or on a plan that has none -
+# the 5h slot shows today's share of the week instead (see below), so the row
+# keeps its shape either way.
 #
-# seven_day gets no such treatment. Its window is a week long and is running
-# essentially always, so an absent seven_day means "never heard", not "zero" -
-# unless we watched the window expire, which is the one case where 0 is a fact.
-# Persistence above is deliberately untouched: a level with no boundary is
-# nothing to hand other sessions.
-[ -z "$five" ] && five=0
+# An absent seven_day means "never heard", not "zero": its window is a week
+# long and running essentially always - unless we watched the window expire,
+# which is the one case where 0 is a fact. Persistence above is deliberately
+# untouched: a level with no boundary is nothing to hand other sessions.
 [ -z "$week" ] && [ -n "$wrolled" ] && week=0
 
 # pace_badge <pace> <used%> -> " <colored OK|WARN|CRIT>".
@@ -190,12 +229,12 @@ if [ -n "$ctx" ]; then
 fi
 
 # 5-hour window: usage% + reset time + time left + pace badge.
-if [ -n "$five" ]; then
+if [ -n "$freset" ]; then
   p=$(printf '%.0f' "$five")
   seg="5h $(heat "$p")${p}%${reset_c}"
   if [ -n "$freset" ]; then
     rt=$(date -d "@$freset" +%H:%M 2>/dev/null)
-    [ -n "$rt" ] && seg="$seg →$rt"
+    [ -n "$rt" ] && seg="$seg ->$rt"
     rem=$(( freset - now ))
     [ "$rem" -gt 0 ] && seg="$seg ($(awk -v s="$rem" 'BEGIN{h=int(s/3600);m=int((s%3600)/60); if(h>0)printf "%dh%02dm",h,m; else printf "%dm",m}'))"
   fi
@@ -210,6 +249,32 @@ if [ -n "$five" ]; then
   fi
   seg="$seg$(pace_badge "$pace" "$five")"
   append "$seg"
+
+# No 5h window: today's usage against today's share of the week. The share is
+# the week left at the start of the day spread over the weekdays left before
+# the reset day, today included - the reset day's morning belongs to the next
+# window's budget, so on that day the leftover is all today's. It is worked out
+# afresh every day, so a heavy day shrinks the days after it and a light one
+# grows them. Days run from local midnight, which no working day crosses.
+# Only the % is shown: the share itself is fixed for the day, so it says
+# nothing new once the day has started. Weekends have no share; they show the
+# plain weekly % used ("of week") and come out of the following weekdays' shares.
+elif [ -n "$day_base" ]; then
+  used=$(awk -v w="$week" -v b="$day_base" 'BEGIN{d=w-b; if(d<0)d=0; printf "%.0f", d}')
+  if [ "$(date +%u)" -le 5 ]; then
+    left=0; d="$today"; rd=$(date -d "@$wreset" +%F)
+    while [[ "$d" < "$rd" ]]; do
+      [ "$(date -d "$d" +%u)" -le 5 ] && left=$(( left + 1 ))
+      d=$(date -d "$d +1 day" +%F)
+    done
+    [ "$left" -eq 0 ] && left=1
+    p=$(awk -v w="$week" -v b="$day_base" -v n="$left" 'BEGIN{
+      s=(100-b)/n; d=w-b; if(d<0)d=0;
+      printf "%.0f", (s>0)?d/s*100:100 }')
+    append "today $(heat "$p")${p}%${reset_c}"
+  else
+    append "today ${used}% of week"
+  fi
 fi
 
 # 7-day window: usage% + reset date + pace badge.
@@ -218,10 +283,10 @@ fi
 # not add to the expected burn, so 1 working day used should sit near 20%.
 if [ -n "$week" ]; then
   p=$(printf '%.0f' "$week")
-  seg="7d $(heat "$p")${p}%${reset_c}"
+  seg="week $(heat "$p")${p}%${reset_c}"
   if [ -n "$wreset" ]; then
     rt=$(date -d "@$wreset" +'%-m/%-d' 2>/dev/null)
-    [ -n "$rt" ] && seg="$seg →$rt"
+    [ -n "$rt" ] && seg="$seg ->$rt"
   fi
   pace=""
   if [ -n "$wreset" ]; then
