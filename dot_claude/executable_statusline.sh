@@ -90,8 +90,8 @@ if [ -n "$transcript" ] && [ -f "$transcript" ] && [ "$(stat -c %Y "$transcript"
   s_fu=""; s_fr=""; s_wu=""; s_wr=""
 fi
 read4 "$cache" '(. // {})';            c_fu="$R1"; c_fr="${R2%.*}"; c_wu="$R3"; c_wr="${R4%.*}"
-{ read -r c_seen; read -r c_day; read -r c_day_wr; read -r c_day_base; } <<EOF
-$(printf '%s' "$cache" | jq -r '(.seen_at // .updated_at), .day.date, .day.wreset, .day.base | if . == null then "" else tostring end' 2>/dev/null)
+{ read -r c_seen; read -r c_day; read -r c_day_wr; read -r c_day_base; read -r c_day_from; } <<EOF
+$(printf '%s' "$cache" | jq -r '(.seen_at // .updated_at), .day.date, .day.wreset, .day.base, .day.from | if . == null then "" else tostring end' 2>/dev/null)
 EOF
 c_seen="${c_seen%.*}"; case "$c_seen" in ''|*[!0-9]*) c_seen=0 ;; esac
 # The last 7d reading, kept before the expiry check below can drop it: at the
@@ -147,17 +147,36 @@ else
   [ -z "$wreset" ] && { week="$c_wu"; wreset="$c_wr"; seen="$c_seen"; }
 fi
 
-# Where today started in the 7d window: the last reading from before local
-# midnight, carried in the cache across the day. 0 when the window rolled over
-# - overnight or during the day - since everything in the new window is today's.
+# Where today started in the 7d window, carried in the cache across the day.
+# The last reading from before midnight is NOT it: usage this status line never
+# sees - claude -p, another machine on the account - piles up unread between
+# that reading and the next, and a weekend of it once landed as 14 points of
+# "today" on a Tuesday morning. So a new day only notes where yesterday left
+# off (from) and takes the first reading above it as its base. Whatever that
+# first reading holds beyond yesterday is put before today - the gap, plus
+# the first request of the day, which is the small price. 0 when the window
+# rolled over today, since everything in the new window is today's.
 today=$(date +%F)
-day_base=""
+day_base=""; day_from=""
 if [ -n "$wreset" ]; then
-  if [ "$c_day" = "$today" ] && [ "$c_day_wr" = "$wreset" ]; then day_base="$c_day_base"
-  elif [ "$c_day" != "$today" ] && [ "$prev_wr" = "$wreset" ]; then day_base="${prev_wu:-$week}"
-  else day_base=0
+  if [ "$c_day" = "$today" ] && [ "$c_day_wr" = "$wreset" ]; then
+    day_base="$c_day_base"; day_from="$c_day_from"
+  elif [ "$c_day" = "$today" ]; then
+    day_base=0
+  elif [ "$prev_wr" = "$wreset" ]; then
+    day_from="${prev_wu:-$week}"
+  elif [ "$(date -d "@$(( wreset - 604800 ))" +%F)" = "$today" ]; then
+    day_base=0
+  else
+    day_from=0
+  fi
+  if [ -z "$day_base" ]; then
+    [ -z "$day_from" ] && day_from="$week"
+    awk -v w="$week" -v f="$day_from" 'BEGIN{exit !(w>f)}' && { day_base="$week"; day_from=""; }
   fi
 fi
+# Until the base is known nothing has been seen of today: count from "from".
+day_start="${day_base:-$day_from}"
 
 # Persist the snapshot for sessions whose process holds no rate_limits yet.
 # Nothing ages it out on a clock: an entry leaves only when its own window
@@ -169,7 +188,7 @@ if [ -n "$freset$wreset" ]; then
   fh=null; sd=null; dy=null
   [ -n "$freset" ] && fh=$(printf '{"used_percentage":%s,"resets_at":%s}' "$five" "$freset")
   [ -n "$wreset" ] && sd=$(printf '{"used_percentage":%s,"resets_at":%s}' "$week" "$wreset")
-  [ -n "$day_base" ] && dy=$(printf '{"date":"%s","wreset":%s,"base":%s}' "$today" "$wreset" "$day_base")
+  [ -n "$day_start" ] && dy=$(printf '{"date":"%s","wreset":%s,"base":%s,"from":%s}' "$today" "$wreset" "${day_base:-null}" "${day_from:-null}")
   tmp=$(mktemp "$HOME/.claude/.usage-cache.XXXXXX" 2>/dev/null) && {
     printf '{"account":"%s","account_since":%s,"five_hour":%s,"seven_day":%s,"day":%s,"seen_at":%s}\n' "$acct" "$acct_since" "$fh" "$sd" "$dy" "$seen" > "$tmp" 2>/dev/null \
       && mv -f "$tmp" "$CACHE" 2>/dev/null || rm -f "$tmp" 2>/dev/null
@@ -259,8 +278,8 @@ if [ -n "$freset" ]; then
 # Only the % is shown: the share itself is fixed for the day, so it says
 # nothing new once the day has started. Weekends have no share; they show the
 # plain weekly % used ("of week") and come out of the following weekdays' shares.
-elif [ -n "$day_base" ]; then
-  used=$(awk -v w="$week" -v b="$day_base" 'BEGIN{d=w-b; if(d<0)d=0; printf "%.0f", d}')
+elif [ -n "$day_start" ]; then
+  used=$(awk -v w="$week" -v b="$day_start" 'BEGIN{d=w-b; if(d<0)d=0; printf "%.0f", d}')
   if [ "$(date +%u)" -le 5 ]; then
     left=0; d="$today"; rd=$(date -d "@$wreset" +%F)
     while [[ "$d" < "$rd" ]]; do
@@ -268,7 +287,7 @@ elif [ -n "$day_base" ]; then
       d=$(date -d "$d +1 day" +%F)
     done
     [ "$left" -eq 0 ] && left=1
-    p=$(awk -v w="$week" -v b="$day_base" -v n="$left" 'BEGIN{
+    p=$(awk -v w="$week" -v b="$day_start" -v n="$left" 'BEGIN{
       s=(100-b)/n; d=w-b; if(d<0)d=0;
       printf "%.0f", (s>0)?d/s*100:100 }')
     append "today $(heat "$p")${p}%${reset_c}"
